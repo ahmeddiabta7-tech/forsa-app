@@ -297,3 +297,14 @@ create policy "product images admin upload" on storage.objects for insert
 drop policy if exists "product images admin update" on storage.objects;
 create policy "product images admin update" on storage.objects for update
   using (bucket_id = 'product-images' and public.is_admin());
+
+-- ============================================================
+-- Table privileges (new Supabase projects do not grant these automatically).
+-- Row Level Security above still decides which rows each user can see.
+-- ============================================================
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+grant execute on all functions in schema public to authenticated;
+alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema public grant usage, select on sequences to authenticated;
