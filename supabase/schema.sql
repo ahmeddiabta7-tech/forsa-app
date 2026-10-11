@@ -355,7 +355,9 @@ grant execute on function public.force_new_request() to authenticated;
 -- V1.2 additions (same as supabase/v1_2.sql)
 -- ---------- 1) When an order was delivered ----------
 alter table public.orders add column if not exists delivered_at timestamptz;
+alter table public.orders disable trigger orders_guard;   -- one-time backfill, rule switched back on right after
 update public.orders set delivered_at = updated_at where status = 'delivered' and delivered_at is null;
+alter table public.orders enable trigger orders_guard;
 create index if not exists orders_delivered_idx on public.orders(seller_id, delivered_at) where status = 'delivered';
 
 create or replace function public.prepare_order() returns trigger
