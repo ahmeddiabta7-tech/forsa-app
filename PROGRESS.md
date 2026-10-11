@@ -1,5 +1,18 @@
 # Progress
 
+## Version 1.3 — built (Oct 2026)
+- My Business tab: a seller creates up to 5 businesses (name, logo, page link, category, city, description).
+  Products are added to a business ("Add to my business"); sellers can only order products in one of their businesses
+  (enforced in the database). Each business has its own product list and analytics; orders and costs belong to a business.
+- Services chat: each request is a conversation (seller ↔ partner agency ↔ Forsa team). New messages every 5s on the chat,
+  unread dot on the Services tab (checked every 30s). Phone numbers, emails and WhatsApp/Telegram links are hidden
+  automatically by the database (admin messages are not changed).
+- Partner agencies: an agency signs up normally; Admin → Partners turns the account into a partner for a service.
+  Admin → Services assigns a request to an agency. Agencies see only their assigned requests, the business name/page,
+  never the seller's phone or email. They can change the request status and chat.
+- Bottom bar: Home · Products · Orders · Business · Services · Ideas.
+- Database update: `supabase/v1_3.sql`.
+
 ## Version 1.2 — built (Oct 2026)
 - Monthly rule: months are 30-day blocks from signup. Deliver 3 orders in a month → next month free.
   Fewer than 3 → account pauses until an EGP 100 payment is approved (unlocks 30 days). First month is open.
