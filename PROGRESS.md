@@ -1,5 +1,15 @@
 # Progress
 
+## Version 1.2 — built (Oct 2026)
+- Monthly rule: months are 30-day blocks from signup. Deliver 3 orders in a month → next month free.
+  Fewer than 3 → account pauses until an EGP 100 payment is approved (unlocks 30 days). First month is open.
+  Enforced in the database (`can_sell`) and mirrored in the app (`planState` in `src/core.jsx`). Only delivered orders count (`orders.delivered_at`).
+- "How it works" explanation on Home, Plan page, Welcome and intro.
+- Seller costs in Analytics (ads, marketing, packaging, delivery, other): add / edit / delete; net profit everywhere.
+  Admin → Services can add what a seller paid for a service as a cost (shows "Added by Forsa", seller can't edit it).
+- Bottom bar: Home · Products · Orders · Analytics · Services · Ideas. Account (profile, plan, earnings, admin) is the person icon at the top.
+- Database update: `supabase/v1_2.sql`.
+
 ## Version 1.1 — built (Oct 2026)
 - Design: "Ivory Editorial" — warm white pages, black type (Inter / IBM Plex Sans Arabic), black cards for key numbers.
 - Opening animation on every launch ("Forsa" + فرصة, ~1.5s, fades into the app).
