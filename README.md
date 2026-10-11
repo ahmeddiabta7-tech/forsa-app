@@ -13,6 +13,11 @@ node build.mjs     # outputs to docs/, which GitHub Pages publishes
 
 ## Make someone an admin
 In the Supabase SQL editor:
+The profile protection rule blocks role changes, so pause it for this one update:
 ```sql
+begin;
+alter table public.profiles disable trigger profiles_protect;
 update public.profiles set role = 'admin' where email = 'their@email.com';
+alter table public.profiles enable trigger profiles_protect;
+commit;
 ```
