@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp, Button, Field, Header, Spinner, useLoad, Sheet, Icon, go, money, pname, imgSrc } from '../core.jsx';
 import { GOVERNORATES } from '../lib/i18n.js';
 import { Analytics } from './Grow.jsx';
+import { ThreadList } from './Make.jsx';
 import * as api from '../lib/api.js';
 
 export const bizInitial = (b) => (b?.name || '?').trim().charAt(0).toUpperCase();
@@ -21,12 +22,13 @@ const safeUrl = (u) => {
 };
 
 // ---------- My Business page ----------
-export function MyBusiness({ id, data, reload, notify }) {
+export function MyBusiness({ id, data, reload, notify, unread = {} }) {
   const { t, lang } = useApp();
   const businesses = data.businesses || [];
   const [form, setForm] = useState(null);
   const current = businesses.find((b) => b.id === id) || businesses[0];
   const { data: products } = useLoad(() => api.listProducts({ all: false }), []);
+  const threads = useLoad(() => api.myRequests({ all: true }), []);
 
   if (businesses.length === 0) {
     return (
@@ -86,6 +88,9 @@ export function MyBusiness({ id, data, reload, notify }) {
           ))}
         </div>
       )}
+
+      <div className="section-head"><h2>{t('messages')}</h2><button type="button" className="link-btn" onClick={() => go(`/inbox/${current.id}`)}>{t('allMessages')}</button></div>
+      {threads.loading ? <Spinner /> : <ThreadList threads={(threads.data || []).filter((r) => r.business_id === current.id)} unread={unread} limit={3} />}
 
       <div className="section-head"><h2>{t('analytics')}</h2></div>
       <Analytics data={data} reload={reload} notify={notify} embedded businessId={current.id} />

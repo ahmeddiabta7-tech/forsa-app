@@ -190,6 +190,7 @@ const PATHS = {
   chat: 'M4 5h16v11H9l-5 4z',
   send: 'M4 12l16-8-6 16-2.5-6.5z',
   edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+  factory: 'M3 21V10l5 3V10l5 3V10l5 3V4h3v17zM7 17h2M12 17h2M17 17h2',
 };
 export function Icon({ name, size = 20 }) {
   return (
@@ -199,10 +200,19 @@ export function Icon({ name, size = 20 }) {
   );
 }
 
-// Opens the account page (profile, plan, earnings, language, logout).
+// Opens the account page (profile, plan, earnings, language, logout) — and, for sellers, the Messages inbox.
 export function AccountButton() {
-  const { t } = useApp();
-  return <button type="button" className="icon-btn" onClick={() => go('/more')} aria-label={t('account')}><Icon name="user" /></button>;
+  const { t, profile, unreadTotal } = useApp();
+  return (
+    <span className="top-icons">
+      <button type="button" className="icon-btn" onClick={() => go('/more')} aria-label={t('account')}><Icon name="user" /></button>
+      {profile && profile.role !== 'agency' && (
+        <button type="button" className="icon-btn has-dot" onClick={() => go('/inbox')} aria-label={t('messages')}>
+          <Icon name="chat" />{unreadTotal > 0 && <i className="dot" />}
+        </button>
+      )}
+    </span>
+  );
 }
 
 // Two clear options, always visible: EN | ع

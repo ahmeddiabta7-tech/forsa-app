@@ -6,6 +6,7 @@ import {
 import { computeStats, inPeriod, expensesIn, profitSeries, getAdvice } from '../lib/advisor.js';
 import { tipText } from './Grow.jsx';
 import { AddToBusiness } from './Business.jsx';
+import { ProductSwitch } from './Make.jsx';
 import { GOVERNORATES, CATEGORIES } from '../lib/i18n.js';
 import { PLAN } from '../config.js';
 import * as api from '../lib/api.js';
@@ -121,11 +122,12 @@ export function Products({ data: appData }) {
   const { loading, data, error, reload } = useLoad(() => api.listProducts(), []);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('All');
-  const list = useMemo(() => (data || []).filter((p) => (cat === 'All' || p.category === cat)
+  const list = useMemo(() => (data || []).filter((p) => !p.owner_id && (cat === 'All' || p.category === cat)
     && (!q || `${p.name_en} ${p.name_ar}`.toLowerCase().includes(q.toLowerCase()))), [data, q, cat]);
   return (
     <div className="screen">
       <Header title={t('products')} />
+      <ProductSwitch active="ready" />
       <div className="search"><Icon name="search" size={18} /><input aria-label={t('search')} placeholder={t('search')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       <div className="chips" role="group">
         <button type="button" className="chip" aria-pressed={cat === 'All'} onClick={() => setCat('All')}>{t('all')}</button>

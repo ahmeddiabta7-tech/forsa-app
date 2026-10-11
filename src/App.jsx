@@ -6,6 +6,7 @@ import { Plan, More } from './pages/Account.jsx';
 import { Analytics, Ideas, Services } from './pages/Grow.jsx';
 import { MyBusiness } from './pages/Business.jsx';
 import { ChatPage, AgencyHome } from './pages/Chat.jsx';
+import { MakeHome, ManufacturerPage, CustomRequestPage, Inbox } from './pages/Make.jsx';
 import { Admin } from './pages/Admin.jsx';
 import * as api from './lib/api.js';
 import { auth } from './lib/supa.js';
@@ -70,7 +71,7 @@ export default function App() {
   const [, sectionNow] = route.split('/');
   useEffect(() => {
     if (booting || !profile) return;
-    if (['home', 'orders', 'analytics', 'earnings', 'plan', 'business', 'products', 'services', ''].includes(sectionNow || '')) loadData().catch(() => {});
+    if (['home', 'orders', 'analytics', 'earnings', 'plan', 'business', 'products', 'services', 'make', 'inbox', ''].includes(sectionNow || '')) loadData().catch(() => {});
   }, [sectionNow, booting, profile?.id, loadData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New chat messages: check every 30 seconds (and when the screen changes).
@@ -82,7 +83,8 @@ export default function App() {
     return () => clearInterval(timer);
   }, [booting, profile?.id, sectionNow, loadUnread]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ctx = { ...L, profile };
+  const unreadSum = Object.values(unread).reduce((x, n) => x + n, 0);
+  const ctx = { ...L, profile, unreadTotal: unreadSum };
   let screen;
   if (booting) screen = <Spinner />;
   else if (loadError) screen = <div className="screen"><ErrorBox error={loadError} onRetry={boot} /></div>;
@@ -109,7 +111,14 @@ export default function App() {
       case 'plan': screen = <Plan data={data} notify={notify} />; break;
       case 'idea': case 'ideas': screen = <Ideas notify={notify} />; break;
       case 'analytics': screen = <Analytics data={data} reload={reload} notify={notify} />; break;
-      case 'business': screen = <MyBusiness id={b} data={data} reload={reload} notify={notify} />; break;
+      case 'business': screen = <MyBusiness id={b} data={data} reload={reload} notify={notify} unread={unread} />; break;
+      case 'make': {
+        const [, , kind, mid] = route.split('/');
+        screen = kind === 'm' ? <ManufacturerPage id={mid} data={data} notify={notify} />
+          : kind === 'r' ? <CustomRequestPage id={mid} notify={notify} reload={reload} /> : <MakeHome />;
+        break;
+      }
+      case 'inbox': screen = <Inbox bizId={b} data={data} unread={unread} />; break;
       case 'services': screen = <Services notify={notify} data={data} unread={unread} />; break;
       case 'chat': screen = <ChatPage id={b} onRead={loadUnread} />; break;
       case 'admin': screen = profile.role === 'admin' ? <Admin notify={notify} /> : null; break;
@@ -120,9 +129,8 @@ export default function App() {
   const [, section] = route.split('/');
   const showNav = profile && profile.role !== 'agency' && !booting && !recovery && section !== 'admin';
   const tabs = [['home', 'home', 'home'], ['products', 'grid', 'products'], ['orders', 'box', 'orders'], ['business', 'store', 'bizTab'], ['services', 'megaphone', 'services'], ['ideas', 'bulb', 'ideas']];
-  const active = section === 'product' ? 'products' : section === 'idea' ? 'ideas' : section === 'chat' ? 'services'
+  const active = ['product', 'make'].includes(section) ? 'products' : section === 'inbox' ? 'business' : section === 'idea' ? 'ideas' : section === 'chat' ? 'services'
     : section === 'analytics' ? 'business' : section === 'earnings' ? 'home' : section || 'home';
-  const unreadTotal = Object.values(unread).reduce((x, n) => x + n, 0);
 
   return (
     <AppCtx.Provider value={ctx}>
@@ -133,7 +141,7 @@ export default function App() {
           <nav className="tabbar" aria-label="Main">
             {tabs.map(([k, icon, label]) => (
               <a key={k} href={`#/${k}`} className={active === k ? 'on' : ''} aria-current={active === k ? 'page' : undefined}>
-                <span className="ti"><Icon name={icon} size={20} />{k === 'services' && unreadTotal > 0 && <i className="dot" aria-label={L.t('unreadN', { n: unreadTotal })} />}</span><span>{L.t(label)}</span>
+                <span className="ti"><Icon name={icon} size={20} /></span><span>{L.t(label)}</span>
               </a>
             ))}
           </nav>

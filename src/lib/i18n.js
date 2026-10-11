@@ -112,6 +112,23 @@ export const STRINGS = {
     noMessages: 'No messages yet. Say hello and tell them more about what you need.', waitingAgency: 'The Forsa team will connect you with a partner soon. You can already write here.',
     requestFor: 'For {b}', partnerDashboard: 'Partner dashboard', partnerIntro: 'Requests Forsa assigned to you. Reply in the chat and update the status.',
     noAssigned: 'No requests assigned to you yet.', status: 'Status', unreadN: '{n} new',
+    readyProducts: 'Ready products', makeYourOwn: 'Make your own',
+    makeLead: 'Create a product with your own brand. Pick a Forsa partner manufacturer, tell us what you want, and we take care of the rest.',
+    manufacturersTitle: 'Partner manufacturers', minQty: 'Min. {n} pieces', priceFrom: 'From {p} / piece', leadDays: '{n} days to make',
+    youCanChoose: 'You can choose', startProduct: 'Start my product', productType: 'What product do you want?', productTypeHint: 'e.g. Lavender soap bar',
+    yourChoices: 'Your choices (scent, color, packaging, label…)', quantityPieces: 'Quantity (pieces)', minQtyErr: 'Minimum is {n} pieces',
+    myCustom: 'My products in progress', customSent: 'Request sent. The Forsa team will send you a price quote.', pieces: '{n} pieces',
+    step_requested: 'Request', step_quoted: 'Quote', step_accepted: 'Deposit', step_sample: 'Sample', step_production: 'Production', step_final_payment: 'Final payment', step_live: 'Live',
+    cstatus_requested: 'Waiting for a quote', cstatus_quoted: 'Quote ready', cstatus_accepted: 'Pay the deposit', cstatus_sample: 'Sample in progress',
+    cstatus_production: 'In production', cstatus_final_payment: 'Pay the rest', cstatus_live: 'Live in your business', cstatus_cancelled: 'Cancelled',
+    quoteTitle: 'Price quote', unitPrice: 'Price per piece', total: 'Total', deposit: 'Deposit (pay now)', restOnDelivery: 'Rest when it\'s ready',
+    acceptQuote: 'Accept quote', cancelRequest: 'Cancel request', cancelCustomConfirm: 'Cancel this request?',
+    payDepositTitle: 'Pay the deposit', payRestTitle: 'Pay the rest', payTo: 'Send {a} by InstaPay or Vodafone Cash to:',
+    refSent: 'Reference sent. We confirm within 24 hours.', waitingConfirm: 'We received your reference ({r}). Waiting for confirmation.',
+    liveNote: 'Your product is live in {b}. Forsa stores and ships it for you.', viewProduct: 'View product', chatWithForsa: 'Chat with Forsa team',
+    svc_custom_product: 'Custom product', yourProduct: 'Your product', messages: 'Messages', allMessages: 'All messages',
+    noThreads: 'No conversations yet. Your requests to services and factories appear here.', cat_production: 'Production', all2: 'All',
+    madeFor: 'Made for {b}', customNote: 'Factories work through the Forsa team, so you always deal with one trusted partner.',
     example: 'Example', account: 'My account',
   },
   ar: {
@@ -226,6 +243,23 @@ export const STRINGS = {
     noMessages: 'لسه مفيش رسايل. سلّم عليهم واحكيلهم أكتر عن اللي محتاجه.', waitingAgency: 'فريق فرصة هيوصّلك بشريك قريب. تقدر تكتب هنا من دلوقتي.',
     requestFor: 'لـ {b}', partnerDashboard: 'لوحة الشريك', partnerIntro: 'الطلبات اللي فرصة حوّلتها ليك. رد في المحادثة وحدّث الحالة.',
     noAssigned: 'لسه مفيش طلبات متحوّلة ليك.', status: 'الحالة', unreadN: '{n} جديد',
+    readyProducts: 'منتجات جاهزة', makeYourOwn: 'اعمل منتجك',
+    makeLead: 'اعمل منتج بالبراند بتاعك. اختار مصنع من شركاء فرصة، قولنا عايز إيه، وإحنا نتابع الباقي.',
+    manufacturersTitle: 'المصانع الشريكة', minQty: 'أقل كمية {n} قطعة', priceFrom: 'من {p} للقطعة', leadDays: '{n} يوم تصنيع',
+    youCanChoose: 'تقدر تختار', startProduct: 'ابدأ منتجي', productType: 'عايز منتج إيه؟', productTypeHint: 'مثلًا: صابونة لافندر',
+    yourChoices: 'اختياراتك (الريحة، اللون، التغليف، الليبل…)', quantityPieces: 'الكمية (قطعة)', minQtyErr: 'أقل كمية {n} قطعة',
+    myCustom: 'منتجاتي تحت التنفيذ', customSent: 'تم إرسال الطلب. فريق فرصة هيبعتلك عرض سعر.', pieces: '{n} قطعة',
+    step_requested: 'الطلب', step_quoted: 'عرض السعر', step_accepted: 'العربون', step_sample: 'العينة', step_production: 'التصنيع', step_final_payment: 'الدفعة الأخيرة', step_live: 'متاح',
+    cstatus_requested: 'مستني عرض السعر', cstatus_quoted: 'عرض السعر جاهز', cstatus_accepted: 'ادفع العربون', cstatus_sample: 'العينة بتتعمل',
+    cstatus_production: 'بيتصنّع', cstatus_final_payment: 'ادفع الباقي', cstatus_live: 'متاح في مشروعك', cstatus_cancelled: 'ملغي',
+    quoteTitle: 'عرض السعر', unitPrice: 'سعر القطعة', total: 'الإجمالي', deposit: 'العربون (ادفع دلوقتي)', restOnDelivery: 'الباقي لما يجهز',
+    acceptQuote: 'موافق على العرض', cancelRequest: 'إلغاء الطلب', cancelCustomConfirm: 'تلغي الطلب ده؟',
+    payDepositTitle: 'ادفع العربون', payRestTitle: 'ادفع الباقي', payTo: 'حوّل {a} بإنستاباي أو فودافون كاش على:',
+    refSent: 'تم إرسال رقم العملية. بنأكد خلال ٢٤ ساعة.', waitingConfirm: 'استلمنا رقم العملية ({r}). مستنيين التأكيد.',
+    liveNote: 'منتجك متاح دلوقتي في {b}. فرصة بتخزّنه وتشحنه ليك.', viewProduct: 'شوف المنتج', chatWithForsa: 'كلّم فريق فرصة',
+    svc_custom_product: 'منتج خاص', yourProduct: 'منتجك', messages: 'الرسايل', allMessages: 'كل الرسايل',
+    noThreads: 'لسه مفيش محادثات. طلباتك للخدمات والمصانع هتظهر هنا.', cat_production: 'تصنيع', all2: 'الكل',
+    madeFor: 'معمول لـ {b}', customNote: 'المصانع بتشتغل من خلال فريق فرصة، فانت دايمًا بتتعامل مع شريك واحد موثوق.',
     example: 'مثال', account: 'حسابي',
   },
 };
@@ -240,5 +274,5 @@ export const GOVERNORATES = [
 
 export const CATEGORIES = [['Clothing', 'clothing'], ['Home', 'homeCat'], ['Accessories', 'accessories'], ['Beauty', 'beauty'], ['Other', 'otherCat']];
 
-export const COST_CATEGORIES = ['ads', 'marketing', 'packaging', 'delivery', 'other'];
+export const COST_CATEGORIES = ['ads', 'marketing', 'packaging', 'delivery', 'production', 'other'];
 export const SERVICES = ['marketing_agency', 'media_buying']; // add more keys here (with svc_* text) to offer new services

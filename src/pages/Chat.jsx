@@ -49,7 +49,7 @@ export function ChatPage({ id, onRead }) {
   const biz = r.businesses;
   const isAgency = profile.role === 'agency';
   const who = (m) => (m.sender_id === profile.id ? t('you') : m.sender_id === r.user_id ? (biz?.name || t('sellerLabel')) : m.sender_id === r.agency_id ? t('agencyLabel') : t('forsaTeam'));
-  const back = profile.role === 'admin' ? '/admin' : isAgency ? '/' : '/services';
+  const back = isAgency ? '/' : true; // go back to wherever the chat was opened from
   const page = safeUrl(biz?.page_url);
   return (
     <div className="screen chat-screen">

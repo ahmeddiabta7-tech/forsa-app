@@ -1,5 +1,17 @@
 # Progress
 
+## Version 1.4 — built (Oct 2026)
+- Products tab: "Ready products" (dropshipping) | "Make your own" (Forsa partner manufacturers, shown by code only).
+- Custom product flow: seller picks a manufacturer, describes the product (type, choices, quantity ≥ minimum) for one of
+  their businesses → Forsa sends a quote → seller accepts and pays a deposit (reference) → sample → production →
+  seller pays the rest → admin "Go live" creates a private product (only that seller sees/sells it), adds it to the
+  business with stock = quantity, and records the batch price once as a "Production" cost. Per-order cost = Forsa fee.
+  Sellers can only accept, add payment references or cancel early (database-enforced).
+- Messages inbox (chat icon at the top, red dot for unread): every service and factory conversation, filter per business;
+  each business page also shows its latest conversations.
+- Admin → Manufacturing: manufacturers (add/edit/hide) and requests (quote, confirm deposit, sample, production, final payment, go live).
+- Database update: `supabase/v1_4.sql` (includes 3 example manufacturers).
+
 ## Version 1.3 — built (Oct 2026)
 - My Business tab: a seller creates up to 5 businesses (name, logo, page link, category, city, description).
   Products are added to a business ("Add to my business"); sellers can only order products in one of their businesses

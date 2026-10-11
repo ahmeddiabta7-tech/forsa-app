@@ -1,6 +1,6 @@
 // All data access for the app. Uses Supabase when configured, otherwise a local demo store.
 import { isConfigured, db, storage, auth, getSession } from './supa.js';
-import { DEMO_PRODUCTS } from './demo.js';
+import { DEMO_PRODUCTS, DEMO_MANUFACTURERS } from './demo.js';
 
 const live = isConfigured();
 
@@ -19,7 +19,8 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
-  ['businesses', 'business_products', 'messages', 'chat_reads'].forEach((k) => { if (!d[k]) d[k] = []; });
+  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests'].forEach((k) => { if (!d[k]) d[k] = []; });
+  if (!d.manufacturers) d.manufacturers = DEMO_MANUFACTURERS.map((m, i) => ({ ...m, id: `m${i + 1}`, active: true, created_at: new Date().toISOString() }));
   return d;
 }
 let demo = live ? null : demoLoad();
@@ -85,7 +86,7 @@ export async function updateProfile(id, patch) {
 // ---------- Products ----------
 export async function listProducts({ all = false } = {}) {
   if (live) return db.select('products', `select=*${all ? '' : '&active=eq.true'}&order=created_at.desc`);
-  return demo.products.filter((p) => all || p.active);
+  return demo.products.filter((p) => all || (p.active && (!p.owner_id || p.owner_id === meId())));
 }
 
 export async function saveProduct(p) {
@@ -96,9 +97,8 @@ export async function saveProduct(p) {
     const { id, created_at, ...data } = row;
     return id ? db.update('products', `id=eq.${id}`, data) : db.insert('products', data);
   }
-  if (row.id) { Object.assign(demo.products.find((x) => x.id === row.id), row); }
-  else demo.products.unshift({ ...row, id: uid(), created_at: now() });
-  demoSave(); return row;
+  if (row.id) { Object.assign(demo.products.find((x) => x.id === row.id), row); demoSave(); return row; }
+  const x = { ...row, id: uid(), created_at: now() }; demo.products.unshift(x); demoSave(); return x;
 }
 
 export async function uploadProductImage(file) {
@@ -191,9 +191,9 @@ export async function submitIdea(i) {
 }
 
 // ---------- Service requests ----------
-export async function myRequests() {
-  if (live) return db.select('service_requests', `select=*&user_id=eq.${getSession()?.user?.id}&order=created_at.desc`);
-  return demo.service_requests.filter((r) => r.user_id === meId()).sort(byNewest);
+export async function myRequests({ all = false } = {}) {
+  if (live) return db.select('service_requests', `select=*,businesses(name)&user_id=eq.${getSession()?.user?.id}${all ? '' : '&service=neq.custom_product'}&order=created_at.desc`);
+  return demo.service_requests.filter((r) => r.user_id === meId() && (all || r.service !== 'custom_product')).map((r) => ({ ...r, businesses: demoBiz(r.business_id) })).sort(byNewest);
 }
 
 export async function submitRequest(r) {
@@ -285,8 +285,8 @@ export async function setIdeaStatus(id, status) {
 }
 
 export async function adminRequests() {
-  if (live) return db.select('service_requests', 'select=*,seller:profiles!service_requests_user_id_fkey(full_name,phone,email,city),businesses(name,page_url),seller_expenses(id,amount)&order=created_at.desc&limit=300');
-  return demo.service_requests.map((r) => ({ ...r, seller: pick(demo.profiles.find((p) => p.id === r.user_id)), businesses: demoBiz(r.business_id), seller_expenses: demo.expenses.filter((e) => e.request_id === r.id) })).sort(byNewest);
+  if (live) return db.select('service_requests', 'select=*,seller:profiles!service_requests_user_id_fkey(full_name,phone,email,city),businesses(name,page_url),seller_expenses(id,amount)&service=neq.custom_product&order=created_at.desc&limit=300');
+  return demo.service_requests.filter((r) => r.service !== 'custom_product').map((r) => ({ ...r, seller: pick(demo.profiles.find((p) => p.id === r.user_id)), businesses: demoBiz(r.business_id), seller_expenses: demo.expenses.filter((e) => e.request_id === r.id) })).sort(byNewest);
 }
 
 export async function setRequestStatus(id, status) {
@@ -437,6 +437,78 @@ export async function removeAgency(id) {
 export async function assignAgency(requestId, agencyId) {
   if (live) return db.update('service_requests', `id=eq.${requestId}`, { agency_id: agencyId || null });
   const r = demo.service_requests.find((x) => x.id === requestId); r.agency_id = agencyId || null; demoSave(); return r;
+}
+
+// ---------- Make your own product (manufacturers) ----------
+export async function listManufacturers({ all = false } = {}) {
+  if (live) return db.select('manufacturers', `select=*${all ? '' : '&active=eq.true'}&order=created_at.asc`);
+  return demo.manufacturers.filter((m) => all || m.active);
+}
+
+export async function saveManufacturer(m) {
+  const row = { ...m };
+  ['min_qty', 'price_from', 'lead_days'].forEach((k) => { row[k] = Number(row[k]) || 0; });
+  if (live) { const { id, created_at, ...data } = row; return id ? db.update('manufacturers', `id=eq.${id}`, data) : db.insert('manufacturers', data); }
+  if (row.id) Object.assign(demo.manufacturers.find((x) => x.id === row.id), row);
+  else demo.manufacturers.push({ ...row, id: uid(), created_at: now() });
+  demoSave(); return row;
+}
+
+const CR_SELECT = 'select=*,manufacturers(code,name_en,name_ar,min_qty,lead_days),businesses(name)';
+const demoCR = (c) => ({ ...c, manufacturers: demo.manufacturers.find((m) => m.id === c.manufacturer_id), businesses: demoBiz(c.business_id) });
+
+export async function myCustomRequests() {
+  if (live) return db.select('custom_requests', `${CR_SELECT}&seller_id=eq.${getSession()?.user?.id}&order=created_at.desc`);
+  return demo.custom_requests.filter((c) => c.seller_id === meId()).map(demoCR).sort(byNewest);
+}
+
+export async function getCustomRequest(id) {
+  if (live) { const r = await db.select('custom_requests', `${CR_SELECT}&id=eq.${id}`); return r[0] || null; }
+  const c = demo.custom_requests.find((x) => x.id === id); return c ? demoCR(c) : null;
+}
+
+// Creates the chat thread first, then the request linked to it.
+export async function startCustomRequest({ business_id, manufacturer, product_type, details, quantity }) {
+  const q = Math.round(Number(quantity));
+  const summary = `${product_type.trim()} · ${q} pcs`;
+  const thread = await submitRequest({ service: 'custom_product', business_id, details: summary, budget: '' });
+  const row = { business_id, manufacturer_id: manufacturer.id, thread_id: thread.id, product_type: product_type.trim(), details: details.trim(), quantity: q };
+  if (live) return db.insert('custom_requests', { ...row, seller_id: getSession()?.user?.id });
+  if (q < manufacturer.min_qty) throw new Error(`Minimum quantity is ${manufacturer.min_qty}`);
+  const c = { ...row, id: uid(), seller_id: meId(), status: 'requested', quote_unit_price: null, quote_total: null, deposit_amount: null, quote_note: '',
+    deposit_ref: '', deposit_confirmed: false, balance_ref: '', balance_confirmed: false, product_id: null, created_at: now(), updated_at: now() };
+  demo.custom_requests.push(c); demoSave(); return c;
+}
+
+async function patchCustom(id, patch) {
+  if (live) return db.update('custom_requests', `id=eq.${id}`, patch);
+  const c = demo.custom_requests.find((x) => x.id === id); Object.assign(c, patch, { updated_at: now() }); demoSave(); return c;
+}
+export const acceptQuote = (id) => patchCustom(id, { status: 'accepted' });
+export const cancelCustom = (id) => patchCustom(id, { status: 'cancelled' });
+export const submitDepositRef = (id, ref) => patchCustom(id, { deposit_ref: ref.trim().slice(0, 80) });
+export const submitBalanceRef = (id, ref) => patchCustom(id, { balance_ref: ref.trim().slice(0, 80) });
+
+export async function adminCustomRequests() {
+  if (live) return db.select('custom_requests', `${CR_SELECT},seller:profiles!custom_requests_seller_id_fkey(full_name,phone,email)&order=created_at.desc&limit=300`);
+  return demo.custom_requests.map((c) => ({ ...demoCR(c), seller: pick(demo.profiles.find((p) => p.id === c.seller_id)) })).sort(byNewest);
+}
+export const adminUpdateCustom = (id, patch) => patchCustom(id, patch);
+
+// Final step: the private product is created, added to the seller's business,
+// and the batch price is recorded once as a production cost.
+export async function goLive(c, product) {
+  const created = await saveProduct({ ...product, owner_id: c.seller_id, stock: c.quantity, active: true });
+  const productId = created?.id;
+  if (!productId) throw new Error('Product was not created');
+  await addToBusiness(c.business_id, productId);
+  const cost = { seller_id: c.seller_id, business_id: c.business_id, amount: Number(c.quote_total) || 0, category: 'production',
+    note: `${c.product_type} × ${c.quantity}`, spent_on: new Date().toISOString().slice(0, 10), request_id: c.thread_id, created_by_admin: true };
+  if (cost.amount > 0) {
+    if (live) await db.insert('seller_expenses', cost);
+    else if (!demo.expenses.some((e) => e.request_id === c.thread_id)) { demo.expenses.push({ ...cost, id: uid(), created_at: now() }); demoSave(); }
+  }
+  return patchCustom(c.id, { status: 'live', balance_confirmed: true, product_id: productId });
 }
 
 // ---------- helpers ----------
