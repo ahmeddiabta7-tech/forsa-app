@@ -39,7 +39,7 @@ export function Analytics({ data }) {
   const statusTotal = statusRows.reduce((a, [, n]) => a + n, 0);
   return (
     <div className="screen">
-      <Header title={t('analytics')} back="/home" />
+      <Header title={t('analytics')} />
       <div className="seg" role="group">
         {PERIODS.map((p) => <button type="button" key={p} aria-pressed={period === p} onClick={() => setPeriod(p)}>{t(`period_${p}`)}</button>)}
       </div>
@@ -232,7 +232,7 @@ export function Services({ notify }) {
   const [open, setOpen] = useState(null);
   return (
     <div className="screen">
-      <Header title="" back="/home" />
+      <Header title="" />
       <h1 className="page-title">{t('services')}</h1>
       <p className="lead">{t('servicesLead')}</p>
       {SERVICES.map((k) => (
@@ -244,7 +244,6 @@ export function Services({ notify }) {
           <Button block onClick={() => setOpen(k)}>{t('request')}</Button>
         </div>
       ))}
-      <div className="card link-card soon"><Icon name="sparkle" /><div><b>{t('moreSoon')}</b></div></div>
       {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : (data || []).length > 0 && (
         <>
           <div className="section-head"><h2>{t('myRequests')}</h2></div>

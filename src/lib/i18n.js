@@ -85,7 +85,7 @@ export const STRINGS = {
     budget: 'Monthly budget', budget_low: 'Under EGP 1,000', budget_mid: 'EGP 1,000 to 5,000', budget_high: 'Over EGP 5,000', budget_unsure: 'Not sure yet',
     requestSent: 'Request sent. The Forsa team will contact you soon.', myRequests: 'My requests',
     req_new: 'Received', req_contacted: 'Contacted', req_done: 'Done', moreSoon: 'More services coming soon.',
-    example: 'Example',
+    example: 'Example', account: 'My account',
   },
   ar: {
     tagline: 'ابدأ مشروعك النهارده، من غير رأس مال.',
@@ -172,7 +172,7 @@ export const STRINGS = {
     budget: 'الميزانية الشهرية', budget_low: 'أقل من ١٬٠٠٠ جنيه', budget_mid: 'من ١٬٠٠٠ لـ ٥٬٠٠٠ جنيه', budget_high: 'أكتر من ٥٬٠٠٠ جنيه', budget_unsure: 'لسه مش متأكد',
     requestSent: 'تم إرسال الطلب. فريق فرصة هيتواصل معاك قريب.', myRequests: 'طلباتي',
     req_new: 'تم الاستلام', req_contacted: 'تم التواصل', req_done: 'تم', moreSoon: 'خدمات تانية قريبًا.',
-    example: 'مثال',
+    example: 'مثال', account: 'حسابي',
   },
 };
 

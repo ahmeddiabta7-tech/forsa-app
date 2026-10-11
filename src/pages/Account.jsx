@@ -89,11 +89,11 @@ export function More({ onLogout, onProfileSaved, notify }) {
     catch (err) { notify(err.message); }
     finally { setBusy(false); }
   }
-  const links = [['/earnings', 'wallet', t('earnings')], ['/analytics', 'chart', t('analytics')], ['/services', 'megaphone', t('services')], ['/plan', 'card', t('plan')]];
+  const links = [['/earnings', 'wallet', t('earnings')], ['/plan', 'card', t('plan')]];
   if (profile.role === 'admin') links.push(['/admin', 'shield', t('admin')]);
   return (
     <div className="screen">
-      <Header title={t('more')} />
+      <Header title={t('account')} back="/home" />
       <div className="list">
         {links.map(([to, icon, label]) => (
           <button type="button" key={to} className="order-row" onClick={() => go(to)}><Icon name={icon} /><div className="or-main"><b>{label}</b></div><Icon name="chevron" size={16} /></button>

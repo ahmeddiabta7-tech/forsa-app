@@ -92,7 +92,7 @@ export function Header({ title, back, right, noLang }) {
   if (!right && !noLang) right = <LangSwitch />;
   return (
     <header className="topbar">
-      {back ? <button type="button" className="icon-btn" onClick={() => (typeof back === 'string' ? go(back) : history.back())} aria-label={t('back')}><Icon name="back" /></button> : <span className="topbar-spacer" />}
+      {back ? <button type="button" className="icon-btn" onClick={() => (typeof back === 'string' ? go(back) : history.back())} aria-label={t('back')}><Icon name="back" /></button> : noLang ? <span className="topbar-spacer" /> : <AccountButton />}
       <h1>{title}</h1>
       {right || <span className="topbar-spacer" />}
     </header>
@@ -178,6 +178,12 @@ export function Icon({ name, size = 20 }) {
       <path d={PATHS[name]} />
     </svg>
   );
+}
+
+// Opens the account page (profile, plan, earnings, language, logout).
+export function AccountButton() {
+  const { t } = useApp();
+  return <button type="button" className="icon-btn" onClick={() => go('/more')} aria-label={t('account')}><Icon name="user" /></button>;
 }
 
 // Two clear options, always visible: EN | ع

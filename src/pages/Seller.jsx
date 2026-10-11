@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  useApp, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, MiniBars, greeting,
+  useApp, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, AccountButton, MiniBars, greeting,
   money, num, date, pname, imgSrc, orderProfit, planState, earningsSummary,
 } from '../core.jsx';
 import { computeStats, inPeriod, profitSeries, getAdvice } from '../lib/advisor.js';
@@ -54,7 +54,7 @@ export function Home({ data }) {
     <div className="screen home">
       <div className="page-top">
         <span className="hello-line">{greeting(t)}{firstName ? `${lang === 'ar' ? '،' : ','} ${firstName}` : ''}</span>
-        <LangSwitch />
+        <div className="row" style={{ alignItems: 'center', flexWrap: 'nowrap' }}><LangSwitch /><AccountButton /></div>
       </div>
       <h1 className="headline">{t('welcomeBack')}</h1>
       <BalanceCard plan={plan} balance={sum.balance} />
@@ -74,17 +74,12 @@ export function Home({ data }) {
           {tips[0] && <span className="tipline"><b className="small">{t('tip')}: </b>{tipText(tips[0], t, lang)}</span>}
         </div>
       </div>
-      <div className="quick">
-        <button type="button" onClick={() => go('/analytics')}><Icon name="chart" />{t('analytics')}<span>{t('smartTips')}</span></button>
-        <button type="button" onClick={() => go('/services')}><Icon name="megaphone" />{t('services')}<span>{t('svc_marketing_agency')} · {t('svc_media_buying')}</span></button>
-      </div>
       <div className="section-head"><h2>{t('recentOrders')}</h2>{data.orders.length > 0 && <a href="#/orders">{t('seeAll')}</a>}</div>
       {data.orders.length === 0 ? (
         <div className="card empty"><p>{t('noOrders')}</p><Button onClick={() => go('/products')}>{t('browse')}</Button></div>
       ) : (
         <div className="list">{data.orders.slice(0, 3).map((o) => <OrderRow key={o.id} o={o} />)}</div>
       )}
-      <div className="card link-card soon"><Icon name="sparkle" /><div><b>{t('brandSoon')}</b><p className="muted small">{t('comingSoon')}</p></div></div>
     </div>
   );
 }

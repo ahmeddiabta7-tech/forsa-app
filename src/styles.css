@@ -269,8 +269,9 @@ input[type="file"] { padding: 10px; }
 .danger-zone { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; }
 
 /* tab bar */
-.tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(246,243,238,.96); backdrop-filter: blur(12px); border-top: 1px solid var(--line); padding: 8px 4px calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 20; }
-.tabbar a { display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: var(--muted); font-size: 11px; font-weight: 600; padding: 4px 0; }
+.tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; display: grid; grid-template-columns: repeat(6, 1fr); background: rgba(246,243,238,.96); backdrop-filter: blur(12px); border-top: 1px solid var(--line); padding: 8px 4px calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 20; }
+.tabbar a { display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: var(--muted); font-size: 10.5px; font-weight: 600; padding: 4px 0; min-width: 0; }
+.tabbar a > span:last-child { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tabbar a .ti { width: 34px; height: 28px; border-radius: 9px; display: grid; place-items: center; transition: background .2s; }
 .tabbar a.on { color: var(--text); }
 .tabbar a.on .ti { background: var(--ink); color: var(--on-ink); }

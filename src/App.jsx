@@ -97,9 +97,9 @@ export default function App() {
 
   const [, section] = route.split('/');
   const showNav = profile && !booting && !recovery && section !== 'admin';
-  const tabs = [['home', 'home'], ['products', 'grid'], ['orders', 'box'], ['ideas', 'bulb'], ['more', 'more']];
+  const tabs = [['home', 'home'], ['products', 'grid'], ['orders', 'box'], ['analytics', 'chart'], ['services', 'megaphone'], ['ideas', 'bulb']];
   const active = section === 'product' ? 'products' : section === 'idea' ? 'ideas'
-    : ['plan', 'earnings', 'analytics', 'services'].includes(section) ? (section === 'plan' ? 'more' : 'home') : section || 'home';
+    : section === 'earnings' ? 'home' : section || 'home';
 
   return (
     <AppCtx.Provider value={ctx}>
