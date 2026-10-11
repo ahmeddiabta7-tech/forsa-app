@@ -1,12 +1,29 @@
 # Progress
 
+## Version 1.1 — built (Oct 2026)
+- Design: "Ivory Editorial" — warm white pages, black type (Inter / IBM Plex Sans Arabic), black cards for key numbers.
+- Opening animation on every launch ("Forsa" + فرصة, ~1.5s, fades into the app).
+- 3 intro slides for first-time visitors (Skip / Next, shown once).
+- New Home: greeting, balance card with Month 1 tracker, This week / Month / All time, profit mini-chart, orders card with a smart tip.
+- Clear EN | ع switch at the top of every main screen.
+- Ideas is its own tab, with an explanation, 5 tips, and guided fields (customer, money, needs).
+- Analytics: profit chart, revenue vs costs, units sold, best sellers, return rate, order status, free smart tips.
+  Tips come from rules in `src/lib/advisor.js`; `getAdvice()` is the single place to plug in an AI advisor later
+  (it would receive only `buildSummary()` — anonymous numbers).
+- Services: marketing agency and media buying, with Request form; requests appear in Admin → Services (new / contacted / done).
+  Add a service: add its key to `SERVICES` in `src/lib/i18n.js` plus `svc_<key>` and `svc_<key>_d` text.
+- Admin: delete products (with confirmation). Products with orders can only be hidden.
+- Database update: `supabase/v1_1.sql` (also appended to `schema.sql`).
+
 ## Version 1 — built
 - Welcome, sign up, log in, forgot password (English / Arabic, right-to-left).
-- Seller: home with Month 1 tracker (3 delivered orders), product catalog with photos and profit calculator, copy-ready social post, create order (cash on delivery), my orders with status and cancel, earnings and payouts, plan & subscription payments (InstaPay / Vodafone Cash reference), submit an idea, profile.
+- Seller: product catalog with photos and profit calculator, copy-ready social post, create order (cash on delivery), my orders with status and cancel, earnings and payouts, plan & subscription payments (InstaPay / Vodafone Cash reference), profile.
 - Admin: orders (change status), products (add/edit, photo upload, hide), subscription payments (approve/reject), sellers (balances, record payouts), ideas.
-- Database security: sellers only see their own orders, payouts, payments and ideas; prices below the minimum are rejected; sellers cannot change their own plan or role.
+- Database security: sellers only see their own data; prices below the minimum are rejected; sellers cannot change their own plan or role.
 
 ## Next
 - Real InstaPay / Vodafone Cash receiving details in `src/config.js`.
-- Protected chat with factories (V1.1).
-- Email service for confirmations (then re-enable email confirmation).
+- Proper email service before inviting many sellers (free tier sends ~2–3 emails/hour).
+- New-order notifications; courier integration.
+- AI advisor (Gemini free tier through a Supabase Edge Function, daily limit per seller).
+- App Store / Google Play wrapping.
