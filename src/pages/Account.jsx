@@ -86,7 +86,7 @@ export function More({ onLogout, onProfileSaved, notify }) {
     catch (err) { notify(err.message); }
     finally { setBusy(false); }
   }
-  const links = [['/earnings', 'wallet', t('earnings')], ['/plan', 'card', t('plan')]];
+  const links = profile.role === 'agency' ? [] : [['/business', 'store', t('myBusiness')], ['/earnings', 'wallet', t('earnings')], ['/plan', 'card', t('plan')]];
   if (profile.role === 'admin') links.push(['/admin', 'shield', t('admin')]);
   return (
     <div className="screen">

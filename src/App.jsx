@@ -4,6 +4,8 @@ import { Intro, Welcome, Signup, Login, Forgot, ResetPassword, CheckEmail } from
 import { Home, Products, ProductDetail, Orders, Earnings } from './pages/Seller.jsx';
 import { Plan, More } from './pages/Account.jsx';
 import { Analytics, Ideas, Services } from './pages/Grow.jsx';
+import { MyBusiness } from './pages/Business.jsx';
+import { ChatPage, AgencyHome } from './pages/Chat.jsx';
 import { Admin } from './pages/Admin.jsx';
 import * as api from './lib/api.js';
 import { auth } from './lib/supa.js';
@@ -16,7 +18,9 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [booting, setBooting] = useState(true);
   const [recovery, setRecovery] = useState(false);
-  const [data, setData] = useState({ orders: [], payouts: [], expenses: [] });
+  const EMPTY = { orders: [], payouts: [], expenses: [], businesses: [] };
+  const [data, setData] = useState(EMPTY);
+  const [unread, setUnread] = useState({});
   const [toast, setToast] = useState('');
   const [loadError, setLoadError] = useState(null);
   const [introSeen, setIntroSeen] = useState(() => { try { return localStorage.getItem('forsa-intro') === '1'; } catch { return true; } });
@@ -25,8 +29,9 @@ export default function App() {
   const notify = useCallback((m) => { setToast(m); clearTimeout(window.__ft); window.__ft = setTimeout(() => setToast(''), 2800); }, []);
 
   const loadData = useCallback(async () => {
-    const [orders, payouts, expenses, fresh] = await Promise.all([api.myOrders(), api.myPayouts(), api.myExpenses().catch(() => []), api.getProfile().catch(() => null)]);
-    setData({ orders, payouts, expenses });
+    const [orders, payouts, expenses, businesses, fresh] = await Promise.all([
+      api.myOrders(), api.myPayouts(), api.myExpenses().catch(() => []), api.myBusinesses().catch(() => []), api.getProfile().catch(() => null)]);
+    setData({ orders, payouts, expenses, businesses });
     if (fresh) setProfile((cur) => (cur && JSON.stringify(cur) === JSON.stringify(fresh) ? cur : fresh)); // plan / paid_until may have changed
   }, []);
 
@@ -51,7 +56,7 @@ export default function App() {
   }, [boot]);
 
   const onAuthed = useCallback(async () => { setBooting(true); await boot(); go('/home'); }, [boot]);
-  const logout = useCallback(async () => { await api.signOut(); setProfile(null); setData({ orders: [], payouts: [], expenses: [] }); go('/'); }, []);
+  const logout = useCallback(async () => { await api.signOut(); setProfile(null); setData(EMPTY); setUnread({}); go('/'); }, []);
 
   // Route guards
   useEffect(() => {
@@ -65,8 +70,17 @@ export default function App() {
   const [, sectionNow] = route.split('/');
   useEffect(() => {
     if (booting || !profile) return;
-    if (['home', 'orders', 'analytics', 'earnings', 'plan', ''].includes(sectionNow || '')) loadData().catch(() => {});
+    if (['home', 'orders', 'analytics', 'earnings', 'plan', 'business', 'products', 'services', ''].includes(sectionNow || '')) loadData().catch(() => {});
   }, [sectionNow, booting, profile?.id, loadData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // New chat messages: check every 30 seconds (and when the screen changes).
+  const loadUnread = useCallback(() => { api.unreadCounts().then(setUnread).catch(() => {}); }, []);
+  useEffect(() => {
+    if (booting || !profile) return undefined;
+    loadUnread();
+    const timer = setInterval(() => { if (!document.hidden) loadUnread(); }, 30000);
+    return () => clearInterval(timer);
+  }, [booting, profile?.id, sectionNow, loadUnread]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ctx = { ...L, profile };
   let screen;
@@ -81,26 +95,34 @@ export default function App() {
   } else {
     const [, a, b] = route.split('/');
     const reload = () => loadData().catch((e) => notify(e.message));
-    switch (a) {
-      case 'products': screen = <Products />; break;
-      case 'product': screen = <ProductDetail id={b} data={data} notify={notify} onOrdered={() => { notify(L.t('orderPlaced')); reload(); go('/orders'); }} />; break;
+    if (profile.role === 'agency') {
+      // Partner agencies only see their assigned requests, the chat, and their account.
+      screen = a === 'chat' ? <ChatPage id={b} onRead={loadUnread} />
+        : a === 'more' ? <More onLogout={logout} notify={notify} onProfileSaved={() => api.getProfile().then(setProfile)} />
+          : <AgencyHome unread={unread} notify={notify} />;
+    } else switch (a) {
+      case 'products': screen = <Products data={data} />; break;
+      case 'product': screen = <ProductDetail id={b} data={data} reload={reload} notify={notify} onOrdered={() => { notify(L.t('orderPlaced')); reload(); go('/orders'); }} />; break;
       case 'orders': screen = <Orders data={data} openId={b} reload={reload} notify={notify} />; break;
       case 'earnings': screen = <Earnings data={data} />; break;
       case 'more': screen = <More onLogout={logout} notify={notify} onProfileSaved={() => api.getProfile().then(setProfile)} />; break;
       case 'plan': screen = <Plan data={data} notify={notify} />; break;
       case 'idea': case 'ideas': screen = <Ideas notify={notify} />; break;
       case 'analytics': screen = <Analytics data={data} reload={reload} notify={notify} />; break;
-      case 'services': screen = <Services notify={notify} />; break;
+      case 'business': screen = <MyBusiness id={b} data={data} reload={reload} notify={notify} />; break;
+      case 'services': screen = <Services notify={notify} data={data} unread={unread} />; break;
+      case 'chat': screen = <ChatPage id={b} onRead={loadUnread} />; break;
       case 'admin': screen = profile.role === 'admin' ? <Admin notify={notify} /> : null; break;
       default: screen = <Home data={data} />;
     }
   }
 
   const [, section] = route.split('/');
-  const showNav = profile && !booting && !recovery && section !== 'admin';
-  const tabs = [['home', 'home'], ['products', 'grid'], ['orders', 'box'], ['analytics', 'chart'], ['services', 'megaphone'], ['ideas', 'bulb']];
-  const active = section === 'product' ? 'products' : section === 'idea' ? 'ideas'
-    : section === 'earnings' ? 'home' : section || 'home';
+  const showNav = profile && profile.role !== 'agency' && !booting && !recovery && section !== 'admin';
+  const tabs = [['home', 'home', 'home'], ['products', 'grid', 'products'], ['orders', 'box', 'orders'], ['business', 'store', 'bizTab'], ['services', 'megaphone', 'services'], ['ideas', 'bulb', 'ideas']];
+  const active = section === 'product' ? 'products' : section === 'idea' ? 'ideas' : section === 'chat' ? 'services'
+    : section === 'analytics' ? 'business' : section === 'earnings' ? 'home' : section || 'home';
+  const unreadTotal = Object.values(unread).reduce((x, n) => x + n, 0);
 
   return (
     <AppCtx.Provider value={ctx}>
@@ -109,9 +131,9 @@ export default function App() {
         <main className={showNav ? 'with-nav' : ''}>{screen}</main>
         {showNav && (
           <nav className="tabbar" aria-label="Main">
-            {tabs.map(([k, icon]) => (
+            {tabs.map(([k, icon, label]) => (
               <a key={k} href={`#/${k}`} className={active === k ? 'on' : ''} aria-current={active === k ? 'page' : undefined}>
-                <span className="ti"><Icon name={icon} size={20} /></span><span>{L.t(k)}</span>
+                <span className="ti"><Icon name={icon} size={20} />{k === 'services' && unreadTotal > 0 && <i className="dot" aria-label={L.t('unreadN', { n: unreadTotal })} />}</span><span>{L.t(label)}</span>
               </a>
             ))}
           </nav>

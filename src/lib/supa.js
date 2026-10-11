@@ -127,6 +127,8 @@ export const db = {
   insert: (table, row) => rest(table, { method: 'POST', body: row, prefer: 'return=representation' }).then((r) => r?.[0]),
   update: (table, match, patch) => rest(`${table}?${match}`, { method: 'PATCH', body: patch, prefer: 'return=representation' }).then((r) => r?.[0]),
   remove: (table, match) => rest(`${table}?${match}`, { method: 'DELETE', prefer: 'return=representation' }),
+  upsert: (table, row, onConflict) => rest(`${table}?on_conflict=${onConflict}`, { method: 'POST', body: row, prefer: 'resolution=merge-duplicates,return=minimal' }),
+  rpc: (fn, args = {}) => rest(`rpc/${fn}`, { method: 'POST', body: args }),
 };
 
 // ---------- Storage ----------

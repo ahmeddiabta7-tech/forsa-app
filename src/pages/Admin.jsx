@@ -1,10 +1,10 @@
 // Admin panel (English only, for the Forsa team).
 import React, { useMemo, useState } from 'react';
-import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, imgSrc, planState } from '../core.jsx';
+import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, imgSrc, planState, go } from '../core.jsx';
 import { CATEGORIES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
-const TABS = ['Orders', 'Products', 'Payments', 'Sellers', 'Ideas', 'Services'];
+const TABS = ['Orders', 'Products', 'Payments', 'Sellers', 'Ideas', 'Services', 'Partners'];
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 
 export function Admin({ notify }) {
@@ -21,6 +21,7 @@ export function Admin({ notify }) {
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
       {tab === 'Ideas' && <AdminIdeas notify={notify} />}
       {tab === 'Services' && <AdminServices notify={notify} />}
+      {tab === 'Partners' && <AdminPartners notify={notify} />}
     </div>
   );
 }
@@ -274,6 +275,10 @@ const BUDGET_NAMES = { low: 'Under EGP 1,000', mid: 'EGP 1,000–5,000', high: '
 
 function AdminServices({ notify }) {
   const { loading, data, error, reload } = useLoad(() => api.adminRequests(), []);
+  const agencies = useLoad(() => api.adminAgencies(), []);
+  const [unread, setUnread] = useState({});
+  React.useEffect(() => { api.unreadCounts().then(setUnread).catch(() => {}); }, [data]);
+  async function assign(r, agencyId) { try { await api.assignAgency(r.id, agencyId); notify(agencyId ? 'Agency assigned' : 'Agency removed'); reload(); } catch (e) { notify(e.message); } }
   const [filter, setFilter] = useState('new');
   if (loading) return <Spinner />;
   if (error) return <ErrorBox error={error} onRetry={reload} />;
@@ -290,9 +295,15 @@ function AdminServices({ notify }) {
         <div className="list">
           {list.map((r) => (
             <div key={r.id} className="card">
-              <div className="row-between"><b>{SERVICE_NAMES[r.service] || r.service}</b><span className="muted small">{date(r.created_at, 'en')}</span></div>
+              <div className="row-between"><b>{SERVICE_NAMES[r.service] || r.service}{r.businesses?.name ? ` · ${r.businesses.name}` : ''}</b><span className="muted small">{date(r.created_at, 'en')}</span></div>
               <p className="small">{r.details}</p>
-              <p className="small muted">Budget: {BUDGET_NAMES[r.budget] || r.budget || '—'} · {r.profiles?.full_name} · <span dir="ltr">{r.profiles?.phone}</span> · {r.profiles?.email}{r.profiles?.city ? ` · ${r.profiles.city}` : ''}</p>
+              <p className="small muted">Budget: {BUDGET_NAMES[r.budget] || r.budget || '—'} · {r.seller?.full_name} · <span dir="ltr">{r.seller?.phone}</span> · {r.seller?.email}{r.seller?.city ? ` · ${r.seller.city}` : ''}</p>
+              <label className="small" htmlFor={`ag-${r.id}`}>Assigned agency</label>
+              <select id={`ag-${r.id}`} value={r.agency_id || ''} onChange={(e) => assign(r, e.target.value)}>
+                <option value="">— Not assigned (Forsa team replies) —</option>
+                {(agencies.data || []).map((a) => <option key={a.id} value={a.id}>{a.full_name || a.email}{a.agency_service ? ` · ${SERVICE_NAMES[a.agency_service] || a.agency_service}` : ''}</option>)}
+              </select>
+              <Button small variant="ghost" onClick={() => go(`/chat/${r.id}`)}>Open chat{unread[r.id] ? ` · ${unread[r.id]} new` : ''}</Button>
               <select aria-label="Request status" value={r.status} onChange={(e) => change(r, e.target.value)}>
                 {['new', 'contacted', 'done'].map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
@@ -326,5 +337,43 @@ function RequestCost({ r, onAdded }) {
       </div>
       {err && <p className="form-error">{err}</p>}
     </div>
+  );
+}
+
+// Partner agencies: an agency signs up normally, then the admin turns that account into a partner here.
+function AdminPartners({ notify }) {
+  const { loading, data, error, reload } = useLoad(() => api.adminAgencies(), []);
+  const [email, setEmail] = useState('');
+  const [service, setService] = useState('marketing_agency');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function add(ev) {
+    ev.preventDefault();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErr('Enter the agency\'s account email.'); return; }
+    setBusy(true); setErr('');
+    try { await api.makeAgency(email, service); setEmail(''); notify('Partner added'); reload(); } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  async function remove(a) { try { await api.removeAgency(a.id); notify('Partner removed'); reload(); } catch (e) { notify(e.message); } }
+  return (
+    <>
+      <form onSubmit={add} noValidate className="card stack">
+        <h3>Add a partner agency</h3>
+        <p className="small muted">The agency first signs up in the app with its own email. Then enter that email here. It will only see requests you assign to it, and never the seller's phone or email.</p>
+        <Field id="pa-e" label="Agency account email" error={err}><input id="pa-e" type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+        <Field id="pa-s" label="Service"><select id="pa-s" value={service} onChange={(e) => setService(e.target.value)}>{Object.entries(SERVICE_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
+        <button type="submit" className="btn btn-primary block" disabled={busy}>Make partner</button>
+      </form>
+      {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : data.length === 0 ? <div className="card empty"><p>No partner agencies yet.</p></div> : (
+        <div className="list">
+          {data.map((a) => (
+            <div key={a.id} className="card">
+              <div className="row-between"><b>{a.full_name || a.email}</b><span className="pill pill-confirmed">{SERVICE_NAMES[a.agency_service] || 'Partner'}</span></div>
+              <p className="small muted">{a.email} · <span dir="ltr">{a.phone}</span></p>
+              <Button small variant="ghost" onClick={() => remove(a)}>Remove partner</Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

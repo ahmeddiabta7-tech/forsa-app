@@ -19,6 +19,7 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
+  ['businesses', 'business_products', 'messages', 'chat_reads'].forEach((k) => { if (!d[k]) d[k] = []; });
   return d;
 }
 let demo = live ? null : demoLoad();
@@ -147,6 +148,8 @@ export async function createOrder(o) {
   }
   const p = demo.products.find((x) => x.id === o.product_id);
   if (o.unit_price < p.min_price) throw new Error(`Selling price must be at least EGP ${p.min_price}`);
+  const biz = demo.businesses.find((b) => b.id === o.business_id && b.owner_id === meId());
+  if (!biz || !demo.business_products.some((bp) => bp.business_id === biz.id && bp.product_id === o.product_id)) throw new Error('Add this product to your business first');
   const row = { ...o, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status: 'pending', created_at: now(), updated_at: now() };
   demo.orders.push(row); demoSave(); return row;
 }
@@ -282,8 +285,8 @@ export async function setIdeaStatus(id, status) {
 }
 
 export async function adminRequests() {
-  if (live) return db.select('service_requests', 'select=*,profiles(full_name,phone,email,city),seller_expenses(id,amount)&order=created_at.desc&limit=300');
-  return demo.service_requests.map((r) => ({ ...r, profiles: pick(demo.profiles.find((p) => p.id === r.user_id)), seller_expenses: demo.expenses.filter((e) => e.request_id === r.id) })).sort(byNewest);
+  if (live) return db.select('service_requests', 'select=*,seller:profiles!service_requests_user_id_fkey(full_name,phone,email,city),businesses(name,page_url),seller_expenses(id,amount)&order=created_at.desc&limit=300');
+  return demo.service_requests.map((r) => ({ ...r, seller: pick(demo.profiles.find((p) => p.id === r.user_id)), businesses: demoBiz(r.business_id), seller_expenses: demo.expenses.filter((e) => e.request_id === r.id) })).sort(byNewest);
 }
 
 export async function setRequestStatus(id, status) {
@@ -300,7 +303,144 @@ export async function addRequestCost(r, amount) {
   const e = { ...row, id: uid(), created_at: now() }; demo.expenses.push(e); demoSave(); return e;
 }
 
+// ---------- Businesses ----------
+export async function myBusinesses() {
+  if (live) {
+    const rows = await db.select('businesses', `select=*,business_products(product_id)&owner_id=eq.${getSession()?.user?.id}&order=created_at.asc`);
+    return rows.map((b) => ({ ...b, product_ids: (b.business_products || []).map((x) => x.product_id) }));
+  }
+  return demo.businesses.filter((b) => b.owner_id === meId())
+    .map((b) => ({ ...b, product_ids: demo.business_products.filter((x) => x.business_id === b.id).map((x) => x.product_id) }));
+}
+
+const BIZ_FIELDS = ['name', 'category', 'page_url', 'description', 'city', 'logo_url'];
+export async function saveBusiness(b) {
+  const row = Object.fromEntries(BIZ_FIELDS.map((k) => [k, String(b[k] || '').trim()]));
+  if (live) return b.id ? db.update('businesses', `id=eq.${b.id}`, row) : db.insert('businesses', { ...row, owner_id: getSession()?.user?.id });
+  if (b.id) { const x = demo.businesses.find((r) => r.id === b.id); Object.assign(x, row); demoSave(); return x; }
+  if (demo.businesses.filter((r) => r.owner_id === meId()).length >= 5) throw new Error('You can have up to 5 businesses');
+  const x = { ...row, id: uid(), owner_id: meId(), created_at: now() }; demo.businesses.push(x); demoSave(); return x;
+}
+
+export async function deleteBusiness(id) {
+  if (live) {
+    try { const r = await db.remove('businesses', `id=eq.${id}`); if (!r || !r.length) throw new Error('Not deleted'); return true; }
+    catch (e) { if (e.code === '23503') { const er = new Error('HAS_ORDERS'); er.code = 'HAS_ORDERS'; throw er; } throw e; }
+  }
+  if (demo.orders.some((o) => o.business_id === id)) { const er = new Error('HAS_ORDERS'); er.code = 'HAS_ORDERS'; throw er; }
+  demo.businesses = demo.businesses.filter((b) => b.id !== id);
+  demo.business_products = demo.business_products.filter((x) => x.business_id !== id); demoSave(); return true;
+}
+
+export async function addToBusiness(businessId, productId) {
+  if (live) return db.upsert('business_products', { business_id: businessId, product_id: productId }, 'business_id,product_id');
+  if (!demo.business_products.some((x) => x.business_id === businessId && x.product_id === productId)) demo.business_products.push({ business_id: businessId, product_id: productId, created_at: now() });
+  demoSave(); return true;
+}
+
+export async function removeFromBusiness(businessId, productId) {
+  if (live) return db.remove('business_products', `business_id=eq.${businessId}&product_id=eq.${productId}`);
+  demo.business_products = demo.business_products.filter((x) => !(x.business_id === businessId && x.product_id === productId)); demoSave(); return true;
+}
+
+export async function uploadLogo(file) {
+  if (live) {
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+    return storage.upload('business-logos', `${getSession()?.user?.id}/${uid()}.${ext}`, file);
+  }
+  return new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
+}
+
+// ---------- Chat on service requests ----------
+// Same rule as the database: hide phone numbers, emails and WhatsApp/Telegram links (demo mode only; live is done by the server).
+export function maskContacts(text) {
+  return text
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[hidden]')
+    .replace(/(https?:\/\/)?(www\.)?(wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|whatsapp\.com|t\.me|telegram\.me)\S*/gi, '[hidden]')
+    .replace(/\+?[0-9٠-٩][0-9٠-٩ .-]{8,}[0-9٠-٩]/g, '[hidden]');
+}
+
+export async function getRequest(id) {
+  if (live) {
+    const rows = await db.select('service_requests', `select=*,businesses(name,page_url,category,city,description,logo_url)&id=eq.${id}`);
+    return rows[0] || null;
+  }
+  const r = demo.service_requests.find((x) => x.id === id);
+  return r ? { ...r, businesses: demoBiz(r.business_id) } : null;
+}
+
+export async function listMessages(requestId) {
+  if (live) return db.select('request_messages', `select=id,body,sender_id,created_at&request_id=eq.${requestId}&order=created_at.asc&limit=500`);
+  return demo.messages.filter((m) => m.request_id === requestId).sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+export async function sendMessage(requestId, body) {
+  const text = body.trim().slice(0, 2000);
+  if (live) return db.insert('request_messages', { request_id: requestId, body: text });
+  const me = meProfile();
+  const m = { id: uid(), request_id: requestId, sender_id: me.id, body: me.role === 'admin' ? text : maskContacts(text), created_at: now() };
+  demo.messages.push(m); demoSave(); return m;
+}
+
+export async function markRead(requestId) {
+  if (live) return db.upsert('chat_reads', { request_id: requestId, user_id: getSession()?.user?.id, read_at: new Date().toISOString() }, 'request_id,user_id');
+  const r = demo.chat_reads.find((x) => x.request_id === requestId && x.user_id === meId());
+  if (r) r.read_at = now(); else demo.chat_reads.push({ request_id: requestId, user_id: meId(), read_at: now() });
+  demoSave(); return true;
+}
+
+export async function unreadCounts() {
+  if (live) {
+    const rows = await db.rpc('unread_counts');
+    return Object.fromEntries((rows || []).map((r) => [r.request_id, Number(r.unread)]));
+  }
+  const me = meProfile(); if (!me) return {};
+  const mine = demo.service_requests.filter((r) => me.role === 'admin' || r.user_id === me.id || r.agency_id === me.id).map((r) => r.id);
+  const out = {};
+  demo.messages.filter((m) => mine.includes(m.request_id) && m.sender_id !== me.id).forEach((m) => {
+    const read = demo.chat_reads.find((x) => x.request_id === m.request_id && x.user_id === me.id);
+    if (!read || m.created_at > read.read_at) out[m.request_id] = (out[m.request_id] || 0) + 1;
+  });
+  return out;
+}
+
+// ---------- Agencies (partners) ----------
+export async function agencyRequests() {
+  if (live) return db.select('service_requests', `select=*,businesses(name,page_url,category,city,logo_url)&agency_id=eq.${getSession()?.user?.id}&order=created_at.desc`);
+  return demo.service_requests.filter((r) => r.agency_id === meId()).map((r) => ({ ...r, businesses: demoBiz(r.business_id) })).sort(byNewest);
+}
+
+export async function adminAgencies() {
+  if (live) return db.select('profiles', 'select=id,full_name,email,phone,agency_service&role=eq.agency&order=full_name.asc');
+  return demo.profiles.filter((p) => p.role === 'agency').map(pick);
+}
+
+export async function makeAgency(email, service) {
+  const e = email.trim().toLowerCase();
+  if (live) {
+    const rows = await db.select('profiles', `select=id,role&email=eq.${encodeURIComponent(e)}`);
+    if (!rows.length) throw new Error('No account with this email. Ask the agency to sign up first.');
+    if (rows[0].role === 'admin') throw new Error('This account is an admin.');
+    return db.update('profiles', `id=eq.${rows[0].id}`, { role: 'agency', agency_service: service });
+  }
+  const p = demo.profiles.find((x) => x.email === e);
+  if (!p) throw new Error('No account with this email. Ask the agency to sign up first.');
+  if (p.role === 'admin') throw new Error('This account is an admin.');
+  p.role = 'agency'; p.agency_service = service; demoSave(); return pick(p);
+}
+
+export async function removeAgency(id) {
+  if (live) return db.update('profiles', `id=eq.${id}`, { role: 'seller', agency_service: null });
+  const p = demo.profiles.find((x) => x.id === id); p.role = 'seller'; p.agency_service = null; demoSave(); return pick(p);
+}
+
+export async function assignAgency(requestId, agencyId) {
+  if (live) return db.update('service_requests', `id=eq.${requestId}`, { agency_id: agencyId || null });
+  const r = demo.service_requests.find((x) => x.id === requestId); r.agency_id = agencyId || null; demoSave(); return r;
+}
+
 // ---------- helpers ----------
+function demoBiz(id) { const b = demo.businesses.find((x) => x.id === id); return b ? { name: b.name, page_url: b.page_url, category: b.category, city: b.city, description: b.description, logo_url: b.logo_url } : null; }
 function withProduct(o) {
   const p = demo.products.find((x) => x.id === o.product_id) || {};
   return { ...o, products: { name_en: p.name_en, name_ar: p.name_ar, image_url: p.image_url, factory_code: p.factory_code } };

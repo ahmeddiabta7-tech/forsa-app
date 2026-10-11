@@ -1,6 +1,6 @@
 // Growth pages: Analytics (charts + smart tips), Ideas tab, Services.
 import React, { useEffect, useState } from 'react';
-import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, Icon, money, num, date, pname, planState, weekdayName } from '../core.jsx';
+import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, Icon, go, money, num, date, pname, planState, weekdayName } from '../core.jsx';
 import { SERVICES, COST_CATEGORIES } from '../lib/i18n.js';
 import { computeStats, inPeriod, expensesIn, profitSeries, bestSellers, getAdvice } from '../lib/advisor.js';
 import * as api from '../lib/api.js';
@@ -19,30 +19,32 @@ export function tipText(tip, t, lang) {
 const PERIODS = ['week', 'month', 'all'];
 
 // ---------- Analytics ----------
-export function Analytics({ data, reload, notify }) {
+// embedded + businessId: shown inside My Business, limited to that business.
+export function Analytics({ data, reload, notify, embedded, businessId }) {
   const { t, lang, profile } = useApp();
   const [period, setPeriod] = useState('month');
   const [tips, setTips] = useState(null);
   const products = useLoad(() => api.listProducts(), []);
   const plan = planState(profile, data.orders);
-  const orders = inPeriod(data.orders, period);
-  const expenses = data.expenses || [];
+  const allOrders = businessId ? data.orders.filter((o) => o.business_id === businessId) : data.orders;
+  const orders = inPeriod(allOrders, period);
+  const expenses = (data.expenses || []).filter((x) => !businessId || x.business_id === businessId);
   const periodExpenses = expensesIn(expenses, period);
   const s = computeStats(orders, periodExpenses);
-  const series = profitSeries(data.orders, period, expenses);
+  const series = profitSeries(allOrders, period, expenses);
   const [editCost, setEditCost] = useState(null);
   const best = bestSellers(orders, 5);
   useEffect(() => {
-    getAdvice({ orders: data.orders, plan, products: products.data || [], expenses }).then(setTips).catch(() => setTips([]));
-  }, [data.orders, data.expenses, products.data]); // eslint-disable-line react-hooks/exhaustive-deps
+    getAdvice({ orders: allOrders, plan, products: products.data || [], expenses }).then(setTips).catch(() => setTips([]));
+  }, [data.orders, data.expenses, products.data, businessId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusRows = [
     ['delivered', s.delivered], ['onTheWay', s.onTheWay], ['pending', s.pending], ['returned', s.returned], ['cancelled', s.cancelled],
   ];
   const statusTotal = statusRows.reduce((a, [, n]) => a + n, 0);
   return (
-    <div className="screen">
-      <Header title={t('analytics')} />
+    <div className={embedded ? 'stack analytics' : 'screen analytics'}>
+      {!embedded && <Header title={t('analytics')} />}
       <div className="seg" role="group">
         {PERIODS.map((p) => <button type="button" key={p} aria-pressed={period === p} onClick={() => setPeriod(p)}>{t(`period_${p}`)}</button>)}
       </div>
@@ -124,13 +126,13 @@ export function Analytics({ data, reload, notify }) {
         </div>
       )}
       <p className="muted small">{t('analyticsNote')}</p>
-      <CostSheet cost={editCost} onClose={() => setEditCost(null)} onDone={(msg) => { setEditCost(null); notify(t(msg)); reload(); }} />
+      <CostSheet cost={editCost} businessId={businessId} onClose={() => setEditCost(null)} onDone={(msg) => { setEditCost(null); notify(t(msg)); reload(); }} />
     </div>
   );
 }
 
 // Add / edit / delete one of the seller's own costs.
-function CostSheet({ cost, onClose, onDone }) {
+function CostSheet({ cost, businessId, onClose, onDone }) {
   const { t } = useApp();
   const today = new Date().toISOString().slice(0, 10);
   const [f, setF] = useState(null);
@@ -148,7 +150,7 @@ function CostSheet({ cost, onClose, onDone }) {
     const amount = Number(String(f.amount).replace(/[^\d.]/g, ''));
     if (!(amount > 0)) { setErr(t('invalidAmount')); return; }
     setBusy(true); setErr('');
-    try { await api.saveExpense({ ...f, amount, spent_on: f.spent_on > today ? today : f.spent_on }); onDone('costSaved'); }
+    try { await api.saveExpense({ ...f, amount, business_id: cost.business_id ?? businessId ?? null, spent_on: f.spent_on > today ? today : f.spent_on }); onDone('costSaved'); }
     catch (e) { setErr(e.message); } finally { setBusy(false); }
   }
   async function remove() {
@@ -291,8 +293,9 @@ export function Ideas({ notify }) {
 const SVC_ICON = { marketing_agency: 'target', media_buying: 'megaphone' };
 const BUDGETS = ['low', 'mid', 'high', 'unsure'];
 
-export function Services({ notify }) {
+export function Services({ notify, data: appData, unread = {} }) {
   const { t, lang } = useApp();
+  const businesses = appData?.businesses || [];
   const { loading, data, error, reload } = useLoad(() => api.myRequests(), []);
   const [open, setOpen] = useState(null);
   return (
@@ -314,39 +317,56 @@ export function Services({ notify }) {
           <div className="section-head"><h2>{t('myRequests')}</h2></div>
           <div className="list">
             {data.map((r) => (
-              <div key={r.id} className="order-row static">
+              <button type="button" key={r.id} className="order-row" onClick={() => go(`/chat/${r.id}`)}>
                 <Icon name={SVC_ICON[r.service] || 'sparkle'} />
-                <div className="or-main"><b>{t(`svc_${r.service}`)}</b><span className="muted small">{date(r.created_at, lang)}</span></div>
-                <span className={`pill pill-${r.status === 'done' ? 'delivered' : r.status === 'contacted' ? 'confirmed' : 'pending'}`}>{t(`req_${r.status}`)}</span>
-              </div>
+                <div className="or-main"><b>{t(`svc_${r.service}`)}</b><span className="muted small">{date(r.created_at, lang)}{r.business_id && businesses.find((b) => b.id === r.business_id) ? ` · ${businesses.find((b) => b.id === r.business_id).name}` : ''}</span></div>
+                <div className="or-side">
+                  <span className={`pill pill-${r.status === 'done' ? 'delivered' : r.status === 'contacted' ? 'confirmed' : 'pending'}`}>{t(`req_${r.status}`)}</span>
+                  {unread[r.id] ? <span className="unread">{t('unreadN', { n: num(unread[r.id], lang) })}</span> : <span className="muted small"><Icon name="chat" size={14} /></span>}
+                </div>
+              </button>
             ))}
           </div>
         </>
       )}
-      <RequestSheet service={open} onClose={() => setOpen(null)} onDone={() => { setOpen(null); notify(t('requestSent')); reload(); }} />
+      <RequestSheet service={open} businesses={businesses} onClose={() => setOpen(null)} onDone={(r) => { setOpen(null); notify(t('requestSent')); reload(); if (r?.id) go(`/chat/${r.id}`); }} />
     </div>
   );
 }
 
-function RequestSheet({ service, onClose, onDone }) {
+function RequestSheet({ service, businesses, onClose, onDone }) {
   const { t } = useApp();
+  const [bizId, setBizId] = useState('');
   const [details, setDetails] = useState('');
   const [budget, setBudget] = useState('unsure');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setDetails(''); setBudget('unsure'); setErr(''); }, [service]);
+  useEffect(() => { setDetails(''); setBudget('unsure'); setErr(''); setBizId(businesses[0]?.id || ''); }, [service]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!service) return null;
+  if (businesses.length === 0) {
+    return (
+      <Sheet open onClose={onClose} title={t('requestService', { s: t(`svc_${service}`) })}>
+        <p>{t('needBusinessFirst')}</p>
+        <Button block onClick={() => { onClose(); go('/business'); }}>{t('createBusiness')}</Button>
+      </Sheet>
+    );
+  }
   async function submit(ev) {
     ev.preventDefault();
     if (!details.trim()) { setErr(t('required')); return; }
     setBusy(true); setErr('');
-    try { await api.submitRequest({ service, details: details.trim().slice(0, 2000), budget }); onDone(); }
+    try { const r = await api.submitRequest({ service, business_id: bizId || null, details: details.trim().slice(0, 2000), budget }); onDone(r); }
     catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }
   return (
     <Sheet open onClose={onClose} title={t('requestService', { s: t(`svc_${service}`) })}>
       <form onSubmit={submit} noValidate className="stack">
+        {businesses.length > 1 && (
+          <Field id="rq-biz" label={t('orderFor')}>
+            <select id="rq-biz" value={bizId} onChange={(e) => setBizId(e.target.value)}>{businesses.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+          </Field>
+        )}
         <Field id="rq-d" label={t('whatNeed')} error={err} hint={t('whatNeedHint')}><textarea id="rq-d" rows="4" value={details} onChange={(e) => setDetails(e.target.value)} /></Field>
         <Field id="rq-b" label={t('budget')}>
           <select id="rq-b" value={budget} onChange={(e) => setBudget(e.target.value)}>{BUDGETS.map((b) => <option key={b} value={b}>{t(`budget_${b}`)}</option>)}</select>

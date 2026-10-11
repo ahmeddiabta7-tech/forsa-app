@@ -299,3 +299,38 @@ button.stat { cursor: pointer; font: inherit; color: inherit; }
 .ink-link { background: none; border: 0; padding: 0; color: var(--on-ink); font-weight: 700; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; margin-top: 8px; }
 .ink-card .row .btn { margin-top: 8px; }
 .sheet { color: var(--text); text-align: start; }
+
+/* business */
+.biz-empty { display: flex; flex-direction: column; gap: 14px; padding-top: 10px; }
+.biz-card { gap: 12px; }
+.biz-head { display: flex; align-items: center; gap: 12px; }
+.biz-name { font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.biz-logo { border-radius: 14px; object-fit: cover; flex: none; display: grid; place-items: center; background: var(--ink); color: var(--on-ink); font-weight: 800; }
+.biz-link { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px; text-decoration: none; border: 1px solid var(--line-2); border-radius: var(--btn-r); padding: 7px 12px; width: max-content; white-space: nowrap; }
+.link-reset { background: none; border: 0; padding: 0; text-align: start; cursor: pointer; font: inherit; color: inherit; }
+.biz-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.biz-chips span { font-size: 12px; font-weight: 700; background: var(--surface-2); border-radius: 999px; padding: 3px 10px; }
+.badge-added { position: absolute; top: 8px; inset-inline-start: 8px; background: var(--ink); color: var(--on-ink); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; }
+.product { position: relative; }
+
+/* chat */
+.chat-screen { min-height: calc(100dvh - 120px); }
+.chat-info { gap: 8px; }
+.chat-safety { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: flex-start; }
+.msgs { display: flex; flex-direction: column; gap: 8px; flex: 1; padding-bottom: 8px; }
+.msg { max-width: 82%; align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: 16px 16px 16px 4px; padding: 9px 12px; display: flex; flex-direction: column; gap: 2px; }
+[dir="rtl"] .msg { border-radius: 16px 16px 4px 16px; }
+.msg.mine { align-self: flex-end; background: var(--ink); color: var(--on-ink); border-color: var(--ink); border-radius: 16px 16px 4px 16px; }
+[dir="rtl"] .msg.mine { border-radius: 16px 16px 16px 4px; }
+.msg p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.msg-who { font-size: 11px; font-weight: 700; color: var(--muted); }
+.msg-time { font-size: 10px; opacity: .6; align-self: flex-end; }
+.composer { position: sticky; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; align-items: flex-end; background: var(--bg); padding: 8px 0; }
+main:not(.with-nav) .composer { bottom: 0; }
+.composer textarea { resize: none; min-height: 46px; max-height: 120px; }
+.composer .btn { width: 46px; height: 46px; padding: 0; flex: none; }
+[dir="rtl"] .composer .btn .icon { transform: scaleX(-1); }
+.unread { background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.tabbar a .ti { position: relative; }
+.tabbar a .dot { position: absolute; top: 2px; inset-inline-end: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); border: 2px solid var(--bg); }
+.btn { white-space: nowrap; }

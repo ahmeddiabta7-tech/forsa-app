@@ -5,6 +5,7 @@ import {
 } from '../core.jsx';
 import { computeStats, inPeriod, expensesIn, profitSeries, getAdvice } from '../lib/advisor.js';
 import { tipText } from './Grow.jsx';
+import { AddToBusiness } from './Business.jsx';
 import { GOVERNORATES, CATEGORIES } from '../lib/i18n.js';
 import { PLAN } from '../config.js';
 import * as api from '../lib/api.js';
@@ -81,6 +82,13 @@ export function Home({ data }) {
       </div>
       <h1 className="headline">{t('welcomeBack')}</h1>
       <BalanceCard plan={plan} balance={sum.balance} />
+      {(data.businesses || []).length === 0 && (
+        <button type="button" className="card link-card" onClick={() => go('/business')}>
+          <span className="svc-icon"><Icon name="store" /></span>
+          <div><b>{t('createBusiness')}</b><p className="muted small">{t('bizIntro')}</p></div>
+          <Icon name="chevron" size={16} />
+        </button>
+      )}
       <div className="seg" role="group" aria-label={t('analytics')}>
         {PERIODS.map((p) => <button type="button" key={p} aria-pressed={period === p} onClick={() => setPeriod(p)}>{t(`period_${p}`)}</button>)}
       </div>
@@ -108,7 +116,7 @@ export function Home({ data }) {
 }
 
 // ---------- Products ----------
-export function Products() {
+export function Products({ data: appData }) {
   const { t, lang } = useApp();
   const { loading, data, error, reload } = useLoad(() => api.listProducts(), []);
   const [q, setQ] = useState('');
@@ -128,6 +136,7 @@ export function Products() {
           {list.map((p) => (
             <button type="button" key={p.id} className="product" onClick={() => go(`/product/${p.id}`)}>
               <div className="ph"><img src={imgSrc(p.image_url)} alt="" loading="lazy" /></div>
+              {(appData?.businesses || []).some((b) => b.product_ids.includes(p.id)) && <span className="badge-added">✓ {t('added')}</span>}
               <div className="pbody">
                 <b className="pname">{pname(p, lang)}</b>
                 <span className="muted small">Forsa Factory {p.factory_code}</span>
@@ -143,7 +152,7 @@ export function Products() {
 }
 
 // ---------- Product detail + create order ----------
-export function ProductDetail({ id, data, onOrdered, notify }) {
+export function ProductDetail({ id, data, reload: reloadData, onOrdered, notify }) {
   const { t, lang, profile } = useApp();
   const { loading, data: products, error, reload } = useLoad(() => api.listProducts(), []);
   const p = (products || []).find((x) => x.id === id);
@@ -151,11 +160,14 @@ export function ProductDetail({ id, data, onOrdered, notify }) {
   const [price, setPrice] = useState(null);
   const [qty, setQty] = useState(1);
   const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const businesses = data.businesses || [];
   if (loading) return <div className="screen"><Header title="" back="/products" /><Spinner /></div>;
   if (error || !p) return <div className="screen"><Header title="" back="/products" /><ErrorBox error={error} onRetry={reload} /></div>;
   const sell = price ?? p.suggested_price;
   const max = Math.round(p.wholesale_price * 2.5);
   const profit = (sell - p.wholesale_price) * qty;
+  const inBiz = businesses.filter((b) => b.product_ids.includes(p.id));
   const post = lang === 'ar'
     ? `✨ ${p.name_ar}\n${p.description_ar}\nالسعر: ${num(sell, 'ar')} جنيه\nالدفع عند الاستلام 🚚 ابعتلي رسالة واطلب دلوقتي!`
     : `✨ ${p.name_en}\n${p.description_en}\nPrice: EGP ${sell}\nCash on delivery 🚚 Message me to order now!`;
@@ -196,18 +208,23 @@ export function ProductDetail({ id, data, onOrdered, notify }) {
       </div>
       <div className="stack">
         <div className="profit-box"><span>{qty > 1 ? t('profit') : t('earnPerSale')}</span><b>{money(profit, lang)}</b></div>
-        {plan.canSell
-          ? <Button block onClick={() => setOpen(true)}>{t('createOrder')}</Button>
-          : <><p className="form-error">{t('cantSell')}</p><Button block onClick={() => go('/plan')}>{t('renew')}</Button></>}
+        {inBiz.length > 0 && <div className="biz-chips">{inBiz.map((b) => <span key={b.id}>✓ {t('inBusiness', { b: b.name })}</span>)}</div>}
+        {inBiz.length === 0 ? <Button block onClick={() => setAdding(true)}><Icon name="store" size={18} /> {t('addToBusiness')}</Button>
+          : plan.canSell ? <Button block onClick={() => setOpen(true)}>{t('createOrder')}</Button>
+            : <><p className="form-error">{t('cantSell')}</p><Button block onClick={() => go('/plan')}>{t('renew')}</Button></>}
+        {inBiz.length > 0 && inBiz.length < businesses.length && <Button block variant="ghost" onClick={() => setAdding(true)}><Icon name="store" size={18} /> {t('addToBusiness')}</Button>}
         <Button block variant="ghost" onClick={copy}><Icon name="copy" size={18} /> {t('copyPost')}</Button>
       </div>
-      <OrderSheet open={open} onClose={() => setOpen(false)} product={p} price={sell} qty={qty} onDone={(o) => { setOpen(false); onOrdered(o); }} />
+      <OrderSheet open={open} onClose={() => setOpen(false)} product={p} price={sell} qty={qty} businesses={inBiz} onDone={(o) => { setOpen(false); onOrdered(o); }} />
+      <AddToBusiness open={adding} product={p} businesses={businesses} notify={notify} onClose={() => setAdding(false)} onDone={() => { setAdding(false); reloadData?.(); }} />
     </div>
   );
 }
 
-function OrderSheet({ open, onClose, product, price, qty, onDone }) {
+function OrderSheet({ open, onClose, product, price, qty, businesses, onDone }) {
   const { t, lang } = useApp();
+  const [bizId, setBizId] = useState('');
+  useEffect(() => { if (open) setBizId((cur) => (businesses.some((b) => b.id === cur) ? cur : businesses[0]?.id || '')); }, [open, businesses]);
   const [f, setF] = useState({ customer_name: '', customer_phone: '', governorate: 'Cairo', address: '', notes: '' });
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
@@ -220,11 +237,12 @@ function OrderSheet({ open, onClose, product, price, qty, onDone }) {
     if (!/^(\+?20)?0?1[0125]\d{8}$/.test(f.customer_phone.replace(/[\s-]/g, ''))) e.customer_phone = t('invalidPhone');
     if (!f.address.trim()) e.address = t('required');
     if (price < product.min_price) e.price = t('priceTooLow', { p: money(product.min_price, lang) });
+    if (!bizId) e.business = t('businessRequired');
     setErrors(e);
     if (Object.keys(e).length) return;
     setBusy(true); setServerError('');
     try {
-      const o = await api.createOrder({ ...f, customer_phone: f.customer_phone.replace(/[\s-]/g, ''), product_id: product.id, unit_price: price, quantity: qty });
+      const o = await api.createOrder({ ...f, customer_phone: f.customer_phone.replace(/[\s-]/g, ''), product_id: product.id, business_id: bizId, unit_price: price, quantity: qty });
       setF({ customer_name: '', customer_phone: '', governorate: 'Cairo', address: '', notes: '' });
       onDone(o);
     } catch (err) { setServerError(err.message); }
@@ -234,6 +252,11 @@ function OrderSheet({ open, onClose, product, price, qty, onDone }) {
     <Sheet open={open} onClose={onClose} title={t('createOrder')}>
       <div className="order-summary"><span>{pname(product, lang)} × {num(qty, lang)}</span><b>{money(price * qty, lang)}</b></div>
       <form onSubmit={submit} noValidate className="stack">
+        {businesses.length > 1 && (
+          <Field id="os-biz" label={t('orderFor')} error={errors.business}>
+            <select id="os-biz" value={bizId} onChange={(e) => setBizId(e.target.value)}>{businesses.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+          </Field>
+        )}
         <h3>{t('customer')}</h3>
         <Field id="os-name" label={t('customerName')} error={errors.customer_name}><input id="os-name" value={f.customer_name} onChange={set('customer_name')} /></Field>
         <Field id="os-phone" label={t('customerPhone')} error={errors.customer_phone}><input id="os-phone" value={f.customer_phone} onChange={set('customer_phone')} inputMode="tel" dir="ltr" placeholder="01012345678" /></Field>
