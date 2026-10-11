@@ -126,7 +126,7 @@ export const db = {
   select: (table, query = 'select=*') => rest(`${table}?${query}`),
   insert: (table, row) => rest(table, { method: 'POST', body: row, prefer: 'return=representation' }).then((r) => r?.[0]),
   update: (table, match, patch) => rest(`${table}?${match}`, { method: 'PATCH', body: patch, prefer: 'return=representation' }).then((r) => r?.[0]),
-  remove: (table, match) => rest(`${table}?${match}`, { method: 'DELETE' }),
+  remove: (table, match) => rest(`${table}?${match}`, { method: 'DELETE', prefer: 'return=representation' }),
 };
 
 // ---------- Storage ----------

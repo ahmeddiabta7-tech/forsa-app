@@ -3,17 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0b0c">
+  <meta name="theme-color" content="#f6f3ee">
   <meta name="description" content="Forsa: start your business with zero capital. Sell products from verified Egyptian factories and earn every week.">
   <title>Forsa</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Manrope:wght@400;600;700;800&family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
+  <style>
+    /* Opening animation: shown instantly on every launch, removed by the app after ~1.5s. */
+    html, body { margin: 0; background: #f6f3ee; }
+    #splash { position: fixed; inset: 0; z-index: 100; background: #f6f3ee; color: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; transition: opacity .45s ease, visibility .45s; }
+    #splash.out { opacity: 0; visibility: hidden; }
+    #splash .w { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif; font-weight: 800; font-size: 64px; letter-spacing: -.05em; line-height: 1; display: flex; overflow: hidden; padding: 4px 6px; }
+    #splash .w span { display: inline-block; transform: translateY(105%); animation: rise .6s cubic-bezier(.2,.8,.2,1) forwards; }
+    #splash .w span:nth-child(2) { animation-delay: .06s; } #splash .w span:nth-child(3) { animation-delay: .12s; }
+    #splash .w span:nth-child(4) { animation-delay: .18s; } #splash .w span:nth-child(5) { animation-delay: .24s; }
+    #splash .a { font-family: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, sans-serif; font-size: 18px; color: #77716a; opacity: 0; animation: fade .5s .5s ease forwards; }
+    #splash .l { width: 0; height: 2px; background: #111; margin-top: 14px; animation: grow .7s .55s cubic-bezier(.2,.8,.2,1) forwards; }
+    @keyframes rise { to { transform: none; } }
+    @keyframes fade { to { opacity: 1; } }
+    @keyframes grow { to { width: 46px; } }
+    @media (prefers-reduced-motion: reduce) { #splash * { animation: none !important; transform: none !important; opacity: 1 !important; } #splash .l { width: 46px; } }
+  </style>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
+  <div id="splash" aria-hidden="true">
+    <div class="w"><span>F</span><span>o</span><span>r</span><span>s</span><span>a</span></div>
+    <div class="a" lang="ar">فرصة</div>
+    <div class="l"></div>
+  </div>
   <div id="root"></div>
   <script src="app.js"></script>
 </body>

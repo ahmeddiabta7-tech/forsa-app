@@ -4,14 +4,14 @@ import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money
 import { CATEGORIES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
-const TABS = ['Orders', 'Products', 'Payments', 'Sellers', 'Ideas'];
+const TABS = ['Orders', 'Products', 'Payments', 'Sellers', 'Ideas', 'Services'];
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 
 export function Admin({ notify }) {
   const [tab, setTab] = useState('Orders');
   return (
     <div className="screen admin" dir="ltr" lang="en">
-      <Header title="Admin panel" back="/more" />
+      <Header title="Admin panel" back="/more" noLang />
       <div className="chips scroll" role="tablist">
         {TABS.map((x) => <button type="button" key={x} role="tab" className="chip" aria-pressed={tab === x} aria-selected={tab === x} onClick={() => setTab(x)}>{x}</button>)}
       </div>
@@ -20,6 +20,7 @@ export function Admin({ notify }) {
       {tab === 'Payments' && <AdminPayments notify={notify} />}
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
       {tab === 'Ideas' && <AdminIdeas notify={notify} />}
+      {tab === 'Services' && <AdminServices notify={notify} />}
     </div>
   );
 }
@@ -79,7 +80,7 @@ function AdminProducts({ notify }) {
           </button>
         ))}
       </div>
-      <ProductForm product={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); notify('Product saved'); reload(); }} />
+      <ProductForm product={edit} onClose={() => setEdit(null)} onSaved={(msg) => { setEdit(null); notify(msg || 'Product saved'); reload(); }} />
     </>
   );
 }
@@ -88,8 +89,23 @@ function ProductForm({ product, onClose, onSaved }) {
   const [f, setF] = useState(product);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  React.useEffect(() => { setF(product); setErr(''); }, [product]);
+  const [orderCount, setOrderCount] = useState(null);
+  const [confirmDel, setConfirmDel] = useState(false);
+  React.useEffect(() => {
+    setF(product); setErr(''); setConfirmDel(false); setOrderCount(null);
+    if (product?.id) api.productOrderCount(product.id).then(setOrderCount).catch(() => setOrderCount(null));
+  }, [product]);
   if (!product || !f) return null;
+  async function hide() {
+    setBusy(true); setErr('');
+    try { await api.saveProduct({ ...product, active: false }); onSaved('Product hidden from sellers'); } catch (er) { setErr(er.message); } finally { setBusy(false); }
+  }
+  async function remove() {
+    setBusy(true); setErr('');
+    try { await api.deleteProduct(product.id); onSaved('Product deleted'); }
+    catch (er) { if (er.code === 'HAS_ORDERS') setOrderCount((c) => c || 1); setErr(er.message); setConfirmDel(false); }
+    finally { setBusy(false); }
+  }
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
   async function upload(e) {
     const file = e.target.files?.[0];
@@ -131,6 +147,21 @@ function ProductForm({ product, onClose, onSaved }) {
         {err && <p className="form-error" role="alert">{err}</p>}
         <button type="submit" className="btn btn-primary block" disabled={busy}>{busy ? 'Saving…' : 'Save product'}</button>
       </form>
+      {f.id && (
+        <div className="danger-zone">
+          {orderCount === null ? <p className="small muted">Checking orders…</p> : orderCount > 0 ? (
+            <>
+              <p className="small">This product has <b>{orderCount}</b> order{orderCount > 1 ? 's' : ''}, so it can't be deleted (order history must stay). You can hide it instead.</p>
+              {product.active ? <Button block variant="ghost" onClick={hide} disabled={busy}>Hide product</Button> : <p className="small muted">It is already hidden from sellers.</p>}
+            </>
+          ) : confirmDel ? (
+            <div className="card warn stack">
+              <p><b>Delete “{product.name_en}” permanently?</b><br /><span className="small">This can't be undone.</span></p>
+              <div className="row"><Button variant="danger" small onClick={remove} disabled={busy}>Yes, delete</Button><Button variant="ghost" small onClick={() => setConfirmDel(false)}>Keep it</Button></div>
+            </div>
+          ) : <Button block variant="ghost" onClick={() => setConfirmDel(true)}>Delete product</Button>}
+        </div>
+      )}
     </Sheet>
   );
 }
@@ -226,6 +257,7 @@ function AdminIdeas({ notify }) {
         <div key={i.id} className="card">
           <div className="row-between"><b>{i.title}</b><span className="muted small">{date(i.created_at, 'en')}</span></div>
           <p className="small">{i.problem}</p>
+          {(i.customer || i.revenue_model || i.needs) && <p className="small">{i.customer ? <>Customer: {i.customer}<br /></> : null}{i.revenue_model ? <>Money: {i.revenue_model}<br /></> : null}{i.needs ? <>Needs: {i.needs}</> : null}</p>}
           <p className="small muted">{i.sector} · {i.stage} · Funding {money(i.funding_needed, 'en')} · {i.profiles?.full_name} · {i.profiles?.phone}</p>
           <select aria-label="Idea status" value={i.status} onChange={(e) => change(i, e.target.value)}>
             {['new', 'reviewing', 'matched', 'declined'].map((s) => <option key={s} value={s}>{s}</option>)}
@@ -233,5 +265,40 @@ function AdminIdeas({ notify }) {
         </div>
       ))}
     </div>
+  );
+}
+
+const SERVICE_NAMES = { marketing_agency: 'Marketing agency', media_buying: 'Media buying' };
+const BUDGET_NAMES = { low: 'Under EGP 1,000', mid: 'EGP 1,000–5,000', high: 'Over EGP 5,000', unsure: 'Not sure' };
+
+function AdminServices({ notify }) {
+  const { loading, data, error, reload } = useLoad(() => api.adminRequests(), []);
+  const [filter, setFilter] = useState('new');
+  if (loading) return <Spinner />;
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
+  async function change(r, status) { try { await api.setRequestStatus(r.id, status); notify('Request updated'); reload(); } catch (e) { notify(e.message); } }
+  const counts = { new: 0, contacted: 0, done: 0 };
+  data.forEach((r) => { counts[r.status] = (counts[r.status] || 0) + 1; });
+  const list = data.filter((r) => filter === 'all' || r.status === filter);
+  return (
+    <>
+      <div className="chips scroll">
+        {['new', 'contacted', 'done', 'all'].map((s) => <button type="button" key={s} className="chip" aria-pressed={filter === s} onClick={() => setFilter(s)}>{s}{s !== 'all' ? ` (${counts[s]})` : ''}</button>)}
+      </div>
+      {list.length === 0 ? <div className="card empty"><p>No service requests here.</p></div> : (
+        <div className="list">
+          {list.map((r) => (
+            <div key={r.id} className="card">
+              <div className="row-between"><b>{SERVICE_NAMES[r.service] || r.service}</b><span className="muted small">{date(r.created_at, 'en')}</span></div>
+              <p className="small">{r.details}</p>
+              <p className="small muted">Budget: {BUDGET_NAMES[r.budget] || r.budget || '—'} · {r.profiles?.full_name} · <span dir="ltr">{r.profiles?.phone}</span> · {r.profiles?.email}{r.profiles?.city ? ` · ${r.profiles.city}` : ''}</p>
+              <select aria-label="Request status" value={r.status} onChange={(e) => change(r, e.target.value)}>
+                {['new', 'contacted', 'done'].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

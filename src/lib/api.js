@@ -17,6 +17,7 @@ function demoLoad() {
       orders: [], payouts: [], subscription_payments: [], ideas: [], seq: 1000,
     };
   }
+  if (!d.service_requests) d.service_requests = [];
   return d;
 }
 let demo = live ? null : demoLoad();
@@ -106,6 +107,27 @@ export async function uploadProductImage(file) {
   return new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(file); });
 }
 
+// Products that already have orders can't be deleted (only hidden), so orders keep their history.
+export async function productOrderCount(id) {
+  if (live) return (await db.select('orders', `select=id&product_id=eq.${id}&limit=1000`)).length;
+  return demo.orders.filter((o) => o.product_id === id).length;
+}
+
+export async function deleteProduct(id) {
+  if ((await productOrderCount(id)) > 0) { const e = new Error('This product has orders, so it can only be hidden.'); e.code = 'HAS_ORDERS'; throw e; }
+  if (live) {
+    try {
+      const rows = await db.remove('products', `id=eq.${id}`);
+      if (!rows || rows.length === 0) throw new Error('Product was not deleted.');
+      return true;
+    } catch (e) {
+      if (e.code === '23503') { const er = new Error('This product has orders, so it can only be hidden.'); er.code = 'HAS_ORDERS'; throw er; }
+      throw e;
+    }
+  }
+  demo.products = demo.products.filter((p) => p.id !== id); demoSave(); return true;
+}
+
 // ---------- Orders ----------
 const ORDER_SELECT = 'select=*,products(name_en,name_ar,image_url,factory_code)';
 
@@ -164,6 +186,18 @@ export async function submitIdea(i) {
   demo.ideas.push(row); demoSave(); return row;
 }
 
+// ---------- Service requests ----------
+export async function myRequests() {
+  if (live) return db.select('service_requests', `select=*&user_id=eq.${getSession()?.user?.id}&order=created_at.desc`);
+  return demo.service_requests.filter((r) => r.user_id === meId()).sort(byNewest);
+}
+
+export async function submitRequest(r) {
+  if (live) return db.insert('service_requests', { ...r, user_id: getSession()?.user?.id });
+  const row = { ...r, id: uid(), user_id: meId(), status: 'new', created_at: now() };
+  demo.service_requests.push(row); demoSave(); return row;
+}
+
 // ---------- Admin ----------
 export async function adminOrders() {
   if (live) return db.select('orders', `${ORDER_SELECT},profiles(full_name,phone,email)&order=created_at.desc&limit=500`);
@@ -217,6 +251,16 @@ export async function adminIdeas() {
 export async function setIdeaStatus(id, status) {
   if (live) return db.update('ideas', `id=eq.${id}`, { status });
   const i = demo.ideas.find((x) => x.id === id); i.status = status; demoSave(); return i;
+}
+
+export async function adminRequests() {
+  if (live) return db.select('service_requests', 'select=*,profiles(full_name,phone,email,city)&order=created_at.desc&limit=300');
+  return demo.service_requests.map((r) => ({ ...r, profiles: pick(demo.profiles.find((p) => p.id === r.user_id)) })).sort(byNewest);
+}
+
+export async function setRequestStatus(id, status) {
+  if (live) return db.update('service_requests', `id=eq.${id}`, { status });
+  const r = demo.service_requests.find((x) => x.id === id); r.status = status; demoSave(); return r;
 }
 
 // ---------- helpers ----------

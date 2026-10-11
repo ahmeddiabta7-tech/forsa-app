@@ -87,8 +87,9 @@ export function Field({ label, error, hint, children, id }) {
   );
 }
 
-export function Header({ title, back, right }) {
+export function Header({ title, back, right, noLang }) {
   const { t } = useApp();
+  if (!right && !noLang) right = <LangSwitch />;
   return (
     <header className="topbar">
       {back ? <button type="button" className="icon-btn" onClick={() => (typeof back === 'string' ? go(back) : history.back())} aria-label={t('back')}><Icon name="back" /></button> : <span className="topbar-spacer" />}
@@ -164,6 +165,12 @@ const PATHS = {
   sparkle: 'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6',
   plus: 'M12 5v14M5 12h14',
   chevron: 'M9 5l7 7-7 7',
+  chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  megaphone: 'M3 10v4a1 1 0 0 0 1 1h3l6 4V5L7 9H4a1 1 0 0 0-1 1zM17 8.5a5 5 0 0 1 0 7M19.5 6a8.5 8.5 0 0 1 0 12',
+  target: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM12 12h.01',
+  trash: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5',
+  eyeoff: 'M3 3l18 18M10.6 6.1A9.7 9.7 0 0 1 12 6c5 0 9 6 9 6a15 15 0 0 1-2.7 3.2M6.6 6.6C4.3 8.1 3 12 3 12s4 6 9 6a8.7 8.7 0 0 0 4.4-1.2M9.9 9.9a3 3 0 0 0 4.2 4.2',
+  arrow: 'M5 12h14M13 6l6 6-6 6',
 };
 export function Icon({ name, size = 20 }) {
   return (
@@ -173,12 +180,34 @@ export function Icon({ name, size = 20 }) {
   );
 }
 
+// Two clear options, always visible: EN | ع
 export function LangSwitch() {
   const { lang, setLang } = useApp();
   return (
-    <button type="button" className="lang-switch" onClick={() => setLang(lang === 'en' ? 'ar' : 'en')} aria-label={lang === 'en' ? 'التبديل إلى العربية' : 'Switch to English'}>
-      {lang === 'en' ? 'ع' : 'EN'}
-    </button>
+    <div className="lang-switch" role="group" aria-label="Language / اللغة" dir="ltr">
+      <button type="button" aria-pressed={lang === 'en'} onClick={() => setLang('en')} lang="en">EN</button>
+      <button type="button" className="ar" aria-pressed={lang === 'ar'} onClick={() => setLang('ar')} lang="ar" aria-label="العربية">ع</button>
+    </div>
+  );
+}
+
+export function greeting(t) {
+  const h = new Date().getHours();
+  return h < 12 ? t('goodMorning') : h < 17 ? t('goodAfternoon') : t('goodEvening');
+}
+
+export function weekdayName(i, lang) {
+  const d = new Date(2024, 0, 7 + i); // 7 Jan 2024 was a Sunday
+  return d.toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-GB', { weekday: 'long' });
+}
+
+// Small bar chart (no labels) used in cards.
+export function MiniBars({ values, label }) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className="bars" role="img" aria-label={label} dir="ltr">
+      {values.map((v, i) => <i key={i} className={v <= 0 ? 'zero' : ''} style={{ height: `${Math.max(6, (v / max) * 100)}%` }} />)}
+    </div>
   );
 }
 

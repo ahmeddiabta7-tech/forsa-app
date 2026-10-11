@@ -1,67 +1,82 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  useApp, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go,
+  useApp, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, MiniBars, greeting,
   money, num, date, pname, imgSrc, orderProfit, planState, earningsSummary,
 } from '../core.jsx';
+import { computeStats, inPeriod, profitSeries, getAdvice } from '../lib/advisor.js';
+import { tipText } from './Grow.jsx';
 import { GOVERNORATES, CATEGORIES } from '../lib/i18n.js';
 import { PLAN } from '../config.js';
 import * as api from '../lib/api.js';
 
-// ---------- Plan card (used on Home) ----------
-function PlanCard({ plan }) {
+// ---------- Balance card with the plan tracker (Home) ----------
+function BalanceCard({ plan, balance }) {
   const { t, lang } = useApp();
-  if (plan.phase === 'active') {
-    return (
-      <div className="card plan-card">
-        <div className="row-between"><span className="eyebrow">{t('planTitle')}</span><span className="pill pill-delivered">{t('pay_approved')}</span></div>
-        <p className="plan-big">{t('activeUntil', { d: date(plan.paidUntil, lang) })}</p>
-        <Button small variant="ghost" onClick={() => go('/plan')}>{t('managePlan')}</Button>
-      </div>
-    );
-  }
-  if (plan.phase === 'expired') {
-    return (
-      <div className="card plan-card warn">
-        <span className="eyebrow">{t('planTitle')}</span>
-        <p className="plan-big">{t('expired')}</p>
-        <Button block onClick={() => go('/plan')}>{t('renew')}</Button>
-      </div>
-    );
-  }
   const done = plan.goalDone || plan.goalWaived;
+  let foot;
+  if (plan.phase === 'active') foot = <span>{t('activeUntil', { d: date(plan.paidUntil, lang) })}</span>;
+  else if (plan.phase === 'expired') foot = <span>{t('expired')}</span>;
+  else if (done) foot = <><span>{plan.goalWaived ? t('goalSkipped') : t('goalDone')}</span><span>{t('daysShort', { n: num(plan.daysLeft, lang) })}</span></>;
+  else foot = <><span>{t('goalLine', { d: num(plan.delivered, lang), n: num(PLAN.goalOrders, lang) })}</span><span>{t('daysShort', { n: num(plan.daysLeft, lang) })}</span></>;
   return (
-    <div className="card plan-card">
-      <div className="row-between"><span className="eyebrow">{t('month1')}</span><span className="muted small">{t('daysLeft', { n: num(plan.daysLeft, lang) })}</span></div>
-      <p className="plan-big">{plan.goalWaived ? t('goalSkipped') : done ? t('goalDone') : t('goal')}</p>
-      {!plan.goalWaived && (
-        <>
-          <div className="tracker" aria-label={`${plan.delivered}/${PLAN.goalOrders}`}>
-            {Array.from({ length: PLAN.goalOrders }, (_, i) => <span key={i} className={i < plan.delivered ? 'on' : ''} />)}
-          </div>
-          <p className="muted small">{num(plan.delivered, lang)} / {num(PLAN.goalOrders, lang)}</p>
-        </>
+    <div className="ink-card">
+      <button type="button" className="ink-tap" onClick={() => go('/earnings')} aria-label={t('earnings')}>
+        <span className="eyebrow">{t('balance')}</span>
+        <b className="big">{money(balance, lang)}</b>
+        <small>{t('paidWeekly')}</small>
+      </button>
+      {plan.phase === 'trial' && !done && (
+        <div className="tracker" role="img" aria-label={`${plan.delivered}/${PLAN.goalOrders}`}>
+          {Array.from({ length: PLAN.goalOrders }, (_, i) => <span key={i} className={i < plan.delivered ? 'on' : ''} />)}
+        </div>
       )}
-      {!done && <Button small variant="ghost" onClick={() => go('/plan')}>{t('skipGoal')}</Button>}
+      <div className="ink-foot">{foot}</div>
+      {plan.phase === 'expired' && <Button block onClick={() => go('/plan')}>{t('renew')}</Button>}
+      {plan.phase === 'trial' && !done && <Button small variant="on-ink" onClick={() => go('/plan')}>{t('skipGoal')}</Button>}
     </div>
   );
 }
 
 // ---------- Home ----------
+const PERIODS = ['week', 'month', 'all'];
+
 export function Home({ data }) {
   const { t, lang, profile } = useApp();
+  const [period, setPeriod] = useState('week');
+  const [tips, setTips] = useState([]);
   const plan = planState(profile, data.orders);
   const sum = earningsSummary(data.orders, data.payouts);
-  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-  const thisMonth = data.orders.filter((o) => new Date(o.created_at) >= monthStart && o.status !== 'cancelled').length;
+  const stats = computeStats(inPeriod(data.orders, period));
+  const series = profitSeries(data.orders, period).map((x) => x.value);
   const firstName = (profile.full_name || '').split(' ')[0];
+  useEffect(() => { getAdvice({ orders: data.orders, plan, products: [] }).then(setTips).catch(() => setTips([])); }, [data.orders]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="screen">
-      <div className="hello"><div><p className="muted">{t('hello')}{firstName ? `${lang === 'ar' ? '،' : ','} ${firstName}` : ''}</p><h1>{t('welcomeBack')}</h1></div></div>
-      <PlanCard plan={plan} />
-      <div className="stats">
-        <div className="stat"><span>{t('totalEarned')}</span><b>{money(sum.earned, lang)}</b></div>
-        <div className="stat"><span>{t('pendingEarn')}</span><b>{money(sum.onTheWay, lang)}</b></div>
-        <div className="stat"><span>{t('ordersMonth')}</span><b>{num(thisMonth, lang)}</b></div>
+    <div className="screen home">
+      <div className="page-top">
+        <span className="hello-line">{greeting(t)}{firstName ? `${lang === 'ar' ? '،' : ','} ${firstName}` : ''}</span>
+        <LangSwitch />
+      </div>
+      <h1 className="headline">{t('welcomeBack')}</h1>
+      <BalanceCard plan={plan} balance={sum.balance} />
+      <div className="seg" role="group" aria-label={t('analytics')}>
+        {PERIODS.map((p) => <button type="button" key={p} aria-pressed={period === p} onClick={() => setPeriod(p)}>{t(`period_${p}`)}</button>)}
+      </div>
+      <div className="stats two">
+        <button type="button" className="stat" onClick={() => go('/analytics')}>
+          <span>{t('profitChart')}</span>
+          <b>{money(stats.profit, lang)}</b>
+          <MiniBars values={series} label={t('profitChart')} />
+        </button>
+        <div className="stat">
+          <span>{t('ordersCount')}</span>
+          <b>{num(stats.orders, lang)}</b>
+          <span className="note">{t('deliveredReturned', { d: num(stats.delivered, lang), r: num(stats.returned, lang) })}</span>
+          {tips[0] && <span className="tipline"><b className="small">{t('tip')}: </b>{tipText(tips[0], t, lang)}</span>}
+        </div>
+      </div>
+      <div className="quick">
+        <button type="button" onClick={() => go('/analytics')}><Icon name="chart" />{t('analytics')}<span>{t('smartTips')}</span></button>
+        <button type="button" onClick={() => go('/services')}><Icon name="megaphone" />{t('services')}<span>{t('svc_marketing_agency')} · {t('svc_media_buying')}</span></button>
       </div>
       <div className="section-head"><h2>{t('recentOrders')}</h2>{data.orders.length > 0 && <a href="#/orders">{t('seeAll')}</a>}</div>
       {data.orders.length === 0 ? (
@@ -69,9 +84,6 @@ export function Home({ data }) {
       ) : (
         <div className="list">{data.orders.slice(0, 3).map((o) => <OrderRow key={o.id} o={o} />)}</div>
       )}
-      <button type="button" className="card link-card" onClick={() => go('/idea')}>
-        <Icon name="bulb" /><div><b>{t('idea')}</b><p className="muted small">{t('ideaIntro').split('.')[0]}.</p></div><Icon name="chevron" size={16} />
-      </button>
       <div className="card link-card soon"><Icon name="sparkle" /><div><b>{t('brandSoon')}</b><p className="muted small">{t('comingSoon')}</p></div></div>
     </div>
   );
@@ -137,14 +149,14 @@ export function ProductDetail({ id, data, onOrdered, notify }) {
     <div className="screen detail">
       <Header title={pname(p, lang)} back="/products" />
       <div className="hero-img"><img src={imgSrc(p.image_url)} alt={pname(p, lang)} /></div>
-      <div className="card">
+      <div className="stack">
         <h2 className="dname">{pname(p, lang)}</h2>
-        <p className="muted">{lang === 'ar' ? p.description_ar : p.description_en}</p>
         <div className="facts">
-          <span><Icon name="shield" size={16} />{t('madeBy')} Forsa Factory {p.factory_code}</span>
-          <span>★ {p.quality_score} {t('quality')}</span>
+          <span><Icon name="shield" size={15} />Forsa Factory {p.factory_code}</span>
+          <span>★ {p.quality_score}</span>
           <span>{t('shipsIn', { n: num(p.ship_days, lang) })}</span>
         </div>
+        <p className="muted">{lang === 'ar' ? p.description_ar : p.description_en}</p>
         <div className="price-grid">
           <div><span>{t('wholesale')}</span><b>{money(p.wholesale_price, lang)}</b></div>
           <div><span>{t('minPrice')}</span><b>{money(p.min_price, lang)}</b></div>
@@ -163,9 +175,9 @@ export function ProductDetail({ id, data, onOrdered, notify }) {
             <button type="button" onClick={() => setQty(Math.min(20, qty + 1))} aria-label="+">+</button>
           </div>
         </Field>
-        <div className="profit-box"><span>{t('profit')}</span><b>{money(profit, lang)}</b></div>
       </div>
       <div className="stack">
+        <div className="profit-box"><span>{qty > 1 ? t('profit') : t('earnPerSale')}</span><b>{money(profit, lang)}</b></div>
         {plan.canSell
           ? <Button block onClick={() => setOpen(true)}>{t('createOrder')}</Button>
           : <><p className="form-error">{t('cantSell')}</p><Button block onClick={() => go('/plan')}>{t('renew')}</Button></>}
@@ -285,10 +297,11 @@ export function Earnings({ data }) {
   const sum = earningsSummary(data.orders, data.payouts);
   return (
     <div className="screen">
-      <Header title={t('earnings')} />
-      <div className="card balance-card">
+      <Header title={t('earnings')} back="/home" />
+      <div className="ink-card">
         <span className="eyebrow">{t('balance')}</span>
-        <b className="balance">{money(sum.balance, lang)}</b>
+        <b className="big">{money(sum.balance, lang)}</b>
+        <small>{t('paidWeekly')}</small>
       </div>
       <div className="stats two">
         <div className="stat"><span>{t('totalEarned')}</span><b>{money(sum.earned, lang)}</b></div>

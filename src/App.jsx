@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AppCtx, useLangState, useRoute, go, Icon, Spinner, Toast, ErrorBox } from './core.jsx';
-import { Welcome, Signup, Login, Forgot, ResetPassword, CheckEmail } from './pages/Auth.jsx';
+import { Intro, Welcome, Signup, Login, Forgot, ResetPassword, CheckEmail } from './pages/Auth.jsx';
 import { Home, Products, ProductDetail, Orders, Earnings } from './pages/Seller.jsx';
-import { Plan, Idea, More } from './pages/Account.jsx';
+import { Plan, More } from './pages/Account.jsx';
+import { Analytics, Ideas, Services } from './pages/Grow.jsx';
 import { Admin } from './pages/Admin.jsx';
 import * as api from './lib/api.js';
 import { auth } from './lib/supa.js';
@@ -18,6 +19,8 @@ export default function App() {
   const [data, setData] = useState({ orders: [], payouts: [] });
   const [toast, setToast] = useState('');
   const [loadError, setLoadError] = useState(null);
+  const [introSeen, setIntroSeen] = useState(() => { try { return localStorage.getItem('forsa-intro') === '1'; } catch { return true; } });
+  const finishIntro = useCallback((to) => { try { localStorage.setItem('forsa-intro', '1'); } catch { /* ignore */ } setIntroSeen(true); go(to); }, []);
 
   const notify = useCallback((m) => { setToast(m); clearTimeout(window.__ft); window.__ft = setTimeout(() => setToast(''), 2800); }, []);
 
@@ -37,7 +40,7 @@ export default function App() {
     } catch (e) {
       if (e.status === 401 || e.status === 403) { await api.signOut(); setProfile(null); }
       else setLoadError(e);
-    } finally { setBooting(false); }
+    } finally { setBooting(false); window.__forsaReady?.(); }
   }, [loadData]);
 
   useEffect(() => {
@@ -57,6 +60,13 @@ export default function App() {
     if (profile && route.startsWith('/admin') && profile.role !== 'admin') go('/home');
   }, [booting, profile, route]);
 
+  // Refresh orders/payouts whenever the seller opens a screen that shows them (admin may have updated statuses).
+  const [, sectionNow] = route.split('/');
+  useEffect(() => {
+    if (booting || !profile) return;
+    if (['home', 'orders', 'analytics', 'earnings', 'plan', ''].includes(sectionNow || '')) loadData().catch(() => {});
+  }, [sectionNow, booting, profile, loadData]);
+
   const ctx = { ...L, profile };
   let screen;
   if (booting) screen = <Spinner />;
@@ -66,7 +76,7 @@ export default function App() {
     screen = route === '/signup' ? <Signup onAuthed={onAuthed} />
       : route === '/login' ? <Login onAuthed={onAuthed} />
         : route === '/forgot' ? <Forgot />
-          : route === '/check-email' ? <CheckEmail /> : <Welcome />;
+          : route === '/check-email' ? <CheckEmail /> : introSeen ? <Welcome /> : <Intro onDone={finishIntro} />;
   } else {
     const [, a, b] = route.split('/');
     const reload = () => loadData().catch((e) => notify(e.message));
@@ -77,7 +87,9 @@ export default function App() {
       case 'earnings': screen = <Earnings data={data} />; break;
       case 'more': screen = <More onLogout={logout} notify={notify} onProfileSaved={() => api.getProfile().then(setProfile)} />; break;
       case 'plan': screen = <Plan data={data} notify={notify} />; break;
-      case 'idea': screen = <Idea notify={notify} />; break;
+      case 'idea': case 'ideas': screen = <Ideas notify={notify} />; break;
+      case 'analytics': screen = <Analytics data={data} />; break;
+      case 'services': screen = <Services notify={notify} />; break;
       case 'admin': screen = profile.role === 'admin' ? <Admin notify={notify} /> : null; break;
       default: screen = <Home data={data} />;
     }
@@ -85,8 +97,9 @@ export default function App() {
 
   const [, section] = route.split('/');
   const showNav = profile && !booting && !recovery && section !== 'admin';
-  const tabs = [['home', 'home'], ['products', 'grid'], ['orders', 'box'], ['earnings', 'wallet'], ['more', 'more']];
-  const active = section === 'product' ? 'products' : ['plan', 'idea'].includes(section) ? 'more' : section || 'home';
+  const tabs = [['home', 'home'], ['products', 'grid'], ['orders', 'box'], ['ideas', 'bulb'], ['more', 'more']];
+  const active = section === 'product' ? 'products' : section === 'idea' ? 'ideas'
+    : ['plan', 'earnings', 'analytics', 'services'].includes(section) ? (section === 'plan' ? 'more' : 'home') : section || 'home';
 
   return (
     <AppCtx.Provider value={ctx}>
@@ -97,7 +110,7 @@ export default function App() {
           <nav className="tabbar" aria-label="Main">
             {tabs.map(([k, icon]) => (
               <a key={k} href={`#/${k}`} className={active === k ? 'on' : ''} aria-current={active === k ? 'page' : undefined}>
-                <Icon name={icon} size={22} /><span>{L.t(k)}</span>
+                <span className="ti"><Icon name={icon} size={20} /></span><span>{L.t(k)}</span>
               </a>
             ))}
           </nav>

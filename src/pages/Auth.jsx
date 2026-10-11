@@ -7,6 +7,66 @@ const appUrl = () => window.location.origin + window.location.pathname;
 const EMAIL_RX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RX = /^(\+?20)?0?1[0125]\d{8}$/;
 
+// ---------- Intro slides (first launch only) ----------
+export function Intro({ onDone }) {
+  const { t, lang } = useApp();
+  const [i, setI] = React.useState(0);
+  const track = React.useRef(null);
+  const slides = [
+    ['intro1t', 'intro1d', <div className="art-photos" key="a"><img src="products/p1.jpg" alt="" /><img src="products/p2.jpg" alt="" /><img src="products/p3.jpg" alt="" /></div>],
+    ['intro2t', 'intro2d', (
+      <div className="art-earn" key="b">
+        <div className="row-between"><span className="muted">{t('yourPrice')}</span><b>{lang === 'ar' ? '٥٢٠ ج.م' : 'EGP 520'}</b></div>
+        <div className="row-between"><span className="muted">{t('wholesale')}</span><b>{lang === 'ar' ? '٣٢٠ ج.م' : 'EGP 320'}</b></div>
+        <div className="profit-box"><span>{t('earnPerSale')}</span><b>{lang === 'ar' ? '٢٠٠ ج.م' : 'EGP 200'}</b></div>
+      </div>
+    )],
+    ['intro3t', 'intro3d', (
+      <div className="ink-card art-goal" key="c">
+        <span className="eyebrow">{t('month1')}</span>
+        <b className="big">{lang === 'ar' ? '٠ ج.م' : 'EGP 0'}</b>
+        <div className="tracker"><span className="on" /><span className="on" /><span /></div>
+        <small>{t('goal')}</small>
+      </div>
+    )],
+  ];
+  const onScroll = () => {
+    const el = track.current; if (!el) return;
+    setI(Math.round(Math.abs(el.scrollLeft) / el.clientWidth));
+  };
+  const goTo = (n) => {
+    const el = track.current; if (!el) return;
+    el.scrollTo({ left: (lang === 'ar' ? -1 : 1) * n * el.clientWidth, behavior: 'smooth' });
+  };
+  const last = i >= slides.length - 1;
+  return (
+    <div className="intro">
+      <div className="intro-top">
+        <span className="wordmark" style={{ fontSize: 22 }}>Forsa</span>
+        <div className="row" style={{ alignItems: 'center', gap: 14 }}>
+          <LangSwitch />
+          {!last && <button type="button" className="link-btn" onClick={() => onDone('/')}>{t('skip')}</button>}
+        </div>
+      </div>
+      <div className="intro-track" ref={track} onScroll={onScroll}>
+        {slides.map(([title, desc, art]) => (
+          <section key={title} className="slide" aria-label={t(title)}>
+            <div className="slide-art">{art}</div>
+            <div className="stack" style={{ gap: 12 }}><h2>{t(title)}</h2><p>{t(desc)}</p></div>
+          </section>
+        ))}
+      </div>
+      <div className="dots" aria-hidden="true">{slides.map((_, n) => <i key={n} className={n === i ? 'on' : ''} />)}</div>
+      {last ? (
+        <div className="stack">
+          <Button block onClick={() => onDone('/signup')}>{t('start')}</Button>
+          <Button block variant="ghost" onClick={() => onDone('/login')}>{t('haveAccount')}</Button>
+        </div>
+      ) : <Button block onClick={() => goTo(i + 1)}>{t('next')} <Icon name="arrow" size={18} /></Button>}
+    </div>
+  );
+}
+
 export function Welcome() {
   const { t } = useApp();
   const steps = [['how1t', 'how1d', 'grid'], ['how2t', 'how2d', 'sparkle'], ['how3t', 'how3d', 'wallet']];
@@ -14,7 +74,7 @@ export function Welcome() {
     <div className="screen welcome">
       <div className="welcome-top"><span /><LangSwitch /></div>
       <div className="brand-block">
-        <div className="wordmark">FORSA</div>
+        <div className="wordmark">Forsa</div>
         <div className="wordmark-ar" lang="ar">فرصة</div>
         <p className="tagline">{t('tagline')}</p>
       </div>

@@ -77,60 +77,6 @@ export function Plan({ data, notify }) {
   );
 }
 
-// ---------- Submit idea ----------
-export function Idea({ notify }) {
-  const { t, lang } = useApp();
-  const { loading, data, error, reload } = useLoad(() => api.myIdeas(), []);
-  const empty = { title: '', problem: '', sector: '', stage: 'idea', funding_needed: '' };
-  const [f, setF] = useState(empty);
-  const [errors, setErrors] = useState({});
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  async function submit(ev) {
-    ev.preventDefault();
-    const e = {};
-    ['title', 'problem', 'sector'].forEach((k) => { if (!f[k].trim()) e[k] = t('required'); });
-    setErrors(e);
-    if (Object.keys(e).length) return;
-    setBusy(true);
-    try { await api.submitIdea({ ...f, funding_needed: Number(f.funding_needed) || 0 }); setF(empty); notify(t('ideaSent')); reload(); }
-    catch (err) { notify(err.message); }
-    finally { setBusy(false); }
-  }
-  return (
-    <div className="screen">
-      <Header title={t('idea')} back="/more" />
-      <p className="muted">{t('ideaIntro')}</p>
-      <form onSubmit={submit} noValidate className="card stack">
-        <Field id="id-title" label={t('ideaTitle')} error={errors.title}><input id="id-title" value={f.title} onChange={set('title')} /></Field>
-        <Field id="id-problem" label={t('ideaProblem')} error={errors.problem}><textarea id="id-problem" rows="3" value={f.problem} onChange={set('problem')} /></Field>
-        <Field id="id-sector" label={t('sector')} error={errors.sector}><input id="id-sector" value={f.sector} onChange={set('sector')} /></Field>
-        <Field id="id-stage" label={t('stage')}>
-          <select id="id-stage" value={f.stage} onChange={set('stage')}>
-            {['idea', 'prototype', 'selling'].map((s) => <option key={s} value={s}>{t(`stage_${s}`)}</option>)}
-          </select>
-        </Field>
-        <Field id="id-fund" label={t('funding')}><input id="id-fund" inputMode="numeric" value={f.funding_needed} onChange={set('funding_needed')} dir="ltr" /></Field>
-        <button type="submit" className="btn btn-primary block" disabled={busy}>{busy ? t('loading') : t('submitIdea')}</button>
-      </form>
-      {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : (data || []).length > 0 && (
-        <>
-          <div className="section-head"><h2>{t('myIdeas')}</h2></div>
-          <div className="list">
-            {data.map((i) => (
-              <div key={i.id} className="order-row static">
-                <Icon name="bulb" />
-                <div className="or-main"><b>{i.title}</b><span className="muted small">{date(i.created_at, lang)}</span></div>
-                <span className={`pill pill-${i.status === 'matched' ? 'delivered' : i.status === 'declined' ? 'cancelled' : 'pending'}`}>{t(`idea_${i.status}`)}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 // ---------- More / profile ----------
 export function More({ onLogout, onProfileSaved, notify }) {
   const { t, lang, profile } = useApp();
@@ -143,7 +89,7 @@ export function More({ onLogout, onProfileSaved, notify }) {
     catch (err) { notify(err.message); }
     finally { setBusy(false); }
   }
-  const links = [['/plan', 'card', t('plan')], ['/idea', 'bulb', t('idea')]];
+  const links = [['/earnings', 'wallet', t('earnings')], ['/analytics', 'chart', t('analytics')], ['/services', 'megaphone', t('services')], ['/plan', 'card', t('plan')]];
   if (profile.role === 'admin') links.push(['/admin', 'shield', t('admin')]);
   return (
     <div className="screen">
