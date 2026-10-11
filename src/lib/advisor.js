@@ -18,8 +18,16 @@ export function inPeriod(orders, period) {
   return start ? orders.filter((o) => new Date(o.created_at) >= start) : orders;
 }
 
-// Core numbers. Revenue / costs / profit count delivered orders only (money actually made).
-export function computeStats(orders) {
+// Seller's own extra costs (ads, marketing…) in a period, by the day they were spent.
+export function expensesIn(expenses = [], period) {
+  const start = periodStart(period);
+  return start ? expenses.filter((x) => new Date(`${x.spent_on}T00:00:00`) >= start) : expenses;
+}
+const dayOf = (x) => new Date(`${x.spent_on}T12:00:00`).getTime();
+
+// Core numbers. Revenue / product cost / profit count delivered orders only (money actually made).
+// "other" = the seller's own costs; "net" = profit − other.
+export function computeStats(orders, expenses = []) {
   const delivered = orders.filter((o) => o.status === 'delivered');
   const returned = orders.filter((o) => o.status === 'returned');
   const live = orders.filter((o) => o.status !== 'cancelled');
@@ -27,7 +35,9 @@ export function computeStats(orders) {
   const costs = delivered.reduce((s, o) => s + o.wholesale_price * qtyOf(o), 0);
   const units = delivered.reduce((s, o) => s + qtyOf(o), 0);
   const closed = delivered.length + returned.length;
+  const other = expenses.reduce((a, x) => a + Number(x.amount || 0), 0);
   return {
+    other, net: revenue - costs - other,
     orders: live.length,
     delivered: delivered.length,
     returned: returned.length,
@@ -41,16 +51,18 @@ export function computeStats(orders) {
 }
 
 // Profit per bucket for the bar chart (delivered orders). Week = 7 days, month = 30 days, all = 12 months.
-export function profitSeries(orders, period) {
+export function profitSeries(orders, period, expenses = []) {
   const delivered = orders.filter((o) => o.status === 'delivered');
   const profit = (o) => (o.unit_price - o.wholesale_price) * qtyOf(o);
+  const spent = (a, b) => expenses.filter((x) => { const t = dayOf(x); return t >= a.getTime() && t < b.getTime(); }).reduce((s, x) => s + Number(x.amount || 0), 0);
+  const when = (o) => new Date(o.delivered_at || o.updated_at || o.created_at);
   if (period === 'all') {
     const out = [];
     const d = new Date(); d.setDate(1); d.setHours(0, 0, 0, 0);
     for (let i = 11; i >= 0; i -= 1) {
       const a = new Date(d.getFullYear(), d.getMonth() - i, 1);
       const b = new Date(d.getFullYear(), d.getMonth() - i + 1, 1);
-      out.push({ date: a, unit: 'month', value: delivered.filter((o) => { const t = new Date(o.updated_at || o.created_at); return t >= a && t < b; }).reduce((s, o) => s + profit(o), 0) });
+      out.push({ date: a, unit: 'month', value: delivered.filter((o) => { const t = when(o); return t >= a && t < b; }).reduce((s, o) => s + profit(o), 0) - spent(a, b) });
     }
     return out;
   }
@@ -58,7 +70,7 @@ export function profitSeries(orders, period) {
   const start = periodStart(period);
   return Array.from({ length: days }, (_, i) => {
     const a = new Date(start.getTime() + i * DAY); const b = new Date(a.getTime() + DAY);
-    return { date: a, unit: 'day', value: delivered.filter((o) => { const t = new Date(o.updated_at || o.created_at); return t >= a && t < b; }).reduce((s, o) => s + profit(o), 0) };
+    return { date: a, unit: 'day', value: delivered.filter((o) => { const t = when(o); return t >= a && t < b; }).reduce((s, o) => s + profit(o), 0) - spent(a, b) };
   });
 }
 
@@ -92,21 +104,22 @@ export function buildSummary(allOrders, plan) {
     totals: s, lastWeek: recent, top,
     avgMargin: margins.length ? margins.reduce((a, b) => a + b, 0) / margins.length : 0,
     bestWeekday: bestWeekday(allOrders),
-    plan: plan ? { phase: plan.phase, delivered: plan.delivered, goalDone: plan.goalDone || plan.goalWaived, daysLeft: plan.daysLeft } : null,
+    plan: plan ? { phase: plan.phase, delivered: plan.delivered, goalDone: plan.goalDone, daysLeft: plan.daysLeft } : null,
   };
 }
 
 // Rule-based tips. Returns [{ key, vars }] — the text lives in i18n (tip_*).
-export function ruleTips(allOrders, plan, products = []) {
+export function ruleTips(allOrders, plan, products = [], expenses = []) {
   const tips = [];
   const s = computeStats(allOrders);
+  const month = computeStats(inPeriod(allOrders, 'month'), expensesIn(expenses, 'month'));
   const goalOrders = 3;
   if (s.orders === 0) {
     tips.push({ key: 'tip_first' });
     tips.push({ key: 'tip_post3' });
     return tips;
   }
-  if (plan && plan.phase === 'trial' && !(plan.goalDone || plan.goalWaived)) {
+  if (plan && plan.phase !== 'frozen' && !plan.goalDone) {
     const left = Math.max(0, goalOrders - plan.delivered);
     if (left > 0) tips.push({ key: 'tip_goal', vars: { n: left, d: plan.daysLeft } });
   }
@@ -121,6 +134,7 @@ export function ruleTips(allOrders, plan, products = []) {
   if (nearMin >= 2) tips.push({ key: 'tip_price_up' });
   const recent = computeStats(inPeriod(allOrders, 'week'));
   if (recent.orders === 0) tips.push({ key: 'tip_quiet' });
+  if (month.other > 0 && month.other > month.profit) tips.push({ key: 'tip_ads' });
   if (s.cancelled >= 2 && s.cancelled / (s.orders + s.cancelled) >= 0.25) tips.push({ key: 'tip_cancel' });
   if (tips.length === 0) tips.push({ key: 'tip_keep' });
   return tips;
@@ -129,6 +143,6 @@ export function ruleTips(allOrders, plan, products = []) {
 // The single entry point the app uses. Swap the body for an AI call later
 // (e.g. a Supabase Edge Function that receives buildSummary()) without touching the UI.
 export const ADVISOR = { provider: 'rules' };
-export async function getAdvice({ orders, plan, products }) {
-  return ruleTips(orders, plan, products);
+export async function getAdvice({ orders, plan, products, expenses }) {
+  return ruleTips(orders, plan, products, expenses);
 }

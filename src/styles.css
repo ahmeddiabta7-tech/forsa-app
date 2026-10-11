@@ -294,3 +294,8 @@ button.stat { cursor: pointer; font: inherit; color: inherit; }
 .stat .tipline b { font-size: 12px; font-weight: 800; letter-spacing: 0; }
 .stat .tipline { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
 .intro { min-height: calc(100dvh - 0px); margin-bottom: -32px; }
+.ink-alert { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding: 12px 14px; border-radius: var(--r-sm); background: rgba(246,243,238,.1); font-size: 14px; }
+.ink-alert span { color: var(--on-ink-muted); font-size: 13px; }
+.ink-link { background: none; border: 0; padding: 0; color: var(--on-ink); font-weight: 700; font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; margin-top: 8px; }
+.ink-card .row .btn { margin-top: 8px; }
+.sheet { color: var(--text); text-align: start; }

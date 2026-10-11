@@ -23,10 +23,10 @@ export function Intro({ onDone }) {
     )],
     ['intro3t', 'intro3d', (
       <div className="ink-card art-goal" key="c">
-        <span className="eyebrow">{t('month1')}</span>
+        <span className="eyebrow">{t('monthLine', { d: lang === 'ar' ? '٣' : '3', n: lang === 'ar' ? '٣' : '3' })}</span>
         <b className="big">{lang === 'ar' ? '٠ ج.م' : 'EGP 0'}</b>
-        <div className="tracker"><span className="on" /><span className="on" /><span /></div>
-        <small>{t('goal')}</small>
+        <div className="tracker"><span className="on" /><span className="on" /><span className="on" /></div>
+        <small>{t('monthDone')}</small>
       </div>
     )],
   ];
@@ -90,10 +90,7 @@ export function Welcome() {
       <div className="card plan-mini">
         <h3>{t('planTitle')}</h3>
         <ul>
-          <li><Icon name="check" size={16} />{t('planM1')}</li>
-          <li><Icon name="check" size={16} />{t('planSkip')}</li>
-          <li><Icon name="check" size={16} />{t('planM2')}</li>
-          <li><Icon name="check" size={16} />{t('planNoStock')}</li>
+          {['planNoStock', 'planM1', 'planSkip', 'planM2'].map((k) => <li key={k}><Icon name="check" size={16} />{t(k)}</li>)}
         </ul>
       </div>
       <div className="stack">

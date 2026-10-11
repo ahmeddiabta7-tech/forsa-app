@@ -3,21 +3,27 @@ import {
   useApp, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, AccountButton, MiniBars, greeting,
   money, num, date, pname, imgSrc, orderProfit, planState, earningsSummary,
 } from '../core.jsx';
-import { computeStats, inPeriod, profitSeries, getAdvice } from '../lib/advisor.js';
+import { computeStats, inPeriod, expensesIn, profitSeries, getAdvice } from '../lib/advisor.js';
 import { tipText } from './Grow.jsx';
 import { GOVERNORATES, CATEGORIES } from '../lib/i18n.js';
 import { PLAN } from '../config.js';
 import * as api from '../lib/api.js';
 
-// ---------- Balance card with the plan tracker (Home) ----------
+// ---------- Plan rules (shared: Home sheet, Plan page, Welcome) ----------
+export function PlanRules() {
+  const { t } = useApp();
+  return (
+    <ul className="ticks">
+      {['planM1', 'planSkip', 'planM2', 'planCount'].map((k) => <li key={k}><Icon name="check" size={16} />{t(k)}</li>)}
+    </ul>
+  );
+}
+
+// ---------- Balance card with this month's tracker (Home) ----------
 function BalanceCard({ plan, balance }) {
   const { t, lang } = useApp();
-  const done = plan.goalDone || plan.goalWaived;
-  let foot;
-  if (plan.phase === 'active') foot = <span>{t('activeUntil', { d: date(plan.paidUntil, lang) })}</span>;
-  else if (plan.phase === 'expired') foot = <span>{t('expired')}</span>;
-  else if (done) foot = <><span>{plan.goalWaived ? t('goalSkipped') : t('goalDone')}</span><span>{t('daysShort', { n: num(plan.daysLeft, lang) })}</span></>;
-  else foot = <><span>{t('goalLine', { d: num(plan.delivered, lang), n: num(PLAN.goalOrders, lang) })}</span><span>{t('daysShort', { n: num(plan.daysLeft, lang) })}</span></>;
+  const [how, setHow] = useState(false);
+  const frozen = plan.phase === 'frozen';
   return (
     <div className="ink-card">
       <button type="button" className="ink-tap" onClick={() => go('/earnings')} aria-label={t('earnings')}>
@@ -25,14 +31,31 @@ function BalanceCard({ plan, balance }) {
         <b className="big">{money(balance, lang)}</b>
         <small>{t('paidWeekly')}</small>
       </button>
-      {plan.phase === 'trial' && !done && (
-        <div className="tracker" role="img" aria-label={`${plan.delivered}/${PLAN.goalOrders}`}>
-          {Array.from({ length: PLAN.goalOrders }, (_, i) => <span key={i} className={i < plan.delivered ? 'on' : ''} />)}
+      {frozen ? (
+        <div className="ink-alert">
+          <b>{t('frozen')}</b>
+          <span>{t('frozenBody', { d: num(Math.min(plan.lastMonth, PLAN.goalOrders), lang) })}</span>
         </div>
+      ) : (
+        <>
+          <div className="tracker" role="img" aria-label={`${plan.delivered}/${PLAN.goalOrders}`}>
+            {Array.from({ length: PLAN.goalOrders }, (_, i) => <span key={i} className={i < plan.delivered ? 'on' : ''} />)}
+          </div>
+          <div className="ink-foot">
+            <span>{plan.goalDone ? t('monthDone') : t('monthLine', { d: num(plan.delivered, lang), n: num(PLAN.goalOrders, lang) })}</span>
+            <span>{t('daysShort', { n: num(plan.daysLeft, lang) })}</span>
+          </div>
+          {plan.phase === 'paid' && <div className="ink-foot"><span>{t('activeUntil', { d: date(plan.paidUntil, lang) })}</span></div>}
+        </>
       )}
-      <div className="ink-foot">{foot}</div>
-      {plan.phase === 'expired' && <Button block onClick={() => go('/plan')}>{t('renew')}</Button>}
-      {plan.phase === 'trial' && !done && <Button small variant="on-ink" onClick={() => go('/plan')}>{t('skipGoal')}</Button>}
+      <div className="row" style={{ alignItems: 'center', gap: 14 }}>
+        {frozen && <Button onClick={() => go('/plan')}>{t('renew')}</Button>}
+        <button type="button" className="ink-link" onClick={() => setHow(true)}>{t('howItWorks')}</button>
+      </div>
+      <Sheet open={how} onClose={() => setHow(false)} title={t('howItWorks')}>
+        <PlanRules />
+        <Button block variant="ghost" onClick={() => { setHow(false); go('/plan'); }}>{t('plan')}</Button>
+      </Sheet>
     </div>
   );
 }
@@ -46,10 +69,10 @@ export function Home({ data }) {
   const [tips, setTips] = useState([]);
   const plan = planState(profile, data.orders);
   const sum = earningsSummary(data.orders, data.payouts);
-  const stats = computeStats(inPeriod(data.orders, period));
-  const series = profitSeries(data.orders, period).map((x) => x.value);
+  const stats = computeStats(inPeriod(data.orders, period), expensesIn(data.expenses, period));
+  const series = profitSeries(data.orders, period, data.expenses || []).map((x) => x.value);
   const firstName = (profile.full_name || '').split(' ')[0];
-  useEffect(() => { getAdvice({ orders: data.orders, plan, products: [] }).then(setTips).catch(() => setTips([])); }, [data.orders]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { getAdvice({ orders: data.orders, plan, products: [], expenses: data.expenses }).then(setTips).catch(() => setTips([])); }, [data.orders, data.expenses]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="screen home">
       <div className="page-top">
@@ -63,8 +86,8 @@ export function Home({ data }) {
       </div>
       <div className="stats two">
         <button type="button" className="stat" onClick={() => go('/analytics')}>
-          <span>{t('profitChart')}</span>
-          <b>{money(stats.profit, lang)}</b>
+          <span>{t('netProfit')}</span>
+          <b>{money(stats.net, lang)}</b>
           <MiniBars values={series} label={t('profitChart')} />
         </button>
         <div className="stat">

@@ -16,7 +16,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [booting, setBooting] = useState(true);
   const [recovery, setRecovery] = useState(false);
-  const [data, setData] = useState({ orders: [], payouts: [] });
+  const [data, setData] = useState({ orders: [], payouts: [], expenses: [] });
   const [toast, setToast] = useState('');
   const [loadError, setLoadError] = useState(null);
   const [introSeen, setIntroSeen] = useState(() => { try { return localStorage.getItem('forsa-intro') === '1'; } catch { return true; } });
@@ -25,8 +25,9 @@ export default function App() {
   const notify = useCallback((m) => { setToast(m); clearTimeout(window.__ft); window.__ft = setTimeout(() => setToast(''), 2800); }, []);
 
   const loadData = useCallback(async () => {
-    const [orders, payouts] = await Promise.all([api.myOrders(), api.myPayouts()]);
-    setData({ orders, payouts });
+    const [orders, payouts, expenses, fresh] = await Promise.all([api.myOrders(), api.myPayouts(), api.myExpenses().catch(() => []), api.getProfile().catch(() => null)]);
+    setData({ orders, payouts, expenses });
+    if (fresh) setProfile((cur) => (cur && JSON.stringify(cur) === JSON.stringify(fresh) ? cur : fresh)); // plan / paid_until may have changed
   }, []);
 
   const boot = useCallback(async () => {
@@ -50,7 +51,7 @@ export default function App() {
   }, [boot]);
 
   const onAuthed = useCallback(async () => { setBooting(true); await boot(); go('/home'); }, [boot]);
-  const logout = useCallback(async () => { await api.signOut(); setProfile(null); setData({ orders: [], payouts: [] }); go('/'); }, []);
+  const logout = useCallback(async () => { await api.signOut(); setProfile(null); setData({ orders: [], payouts: [], expenses: [] }); go('/'); }, []);
 
   // Route guards
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function App() {
   useEffect(() => {
     if (booting || !profile) return;
     if (['home', 'orders', 'analytics', 'earnings', 'plan', ''].includes(sectionNow || '')) loadData().catch(() => {});
-  }, [sectionNow, booting, profile, loadData]);
+  }, [sectionNow, booting, profile?.id, loadData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ctx = { ...L, profile };
   let screen;
@@ -88,7 +89,7 @@ export default function App() {
       case 'more': screen = <More onLogout={logout} notify={notify} onProfileSaved={() => api.getProfile().then(setProfile)} />; break;
       case 'plan': screen = <Plan data={data} notify={notify} />; break;
       case 'idea': case 'ideas': screen = <Ideas notify={notify} />; break;
-      case 'analytics': screen = <Analytics data={data} />; break;
+      case 'analytics': screen = <Analytics data={data} reload={reload} notify={notify} />; break;
       case 'services': screen = <Services notify={notify} />; break;
       case 'admin': screen = profile.role === 'admin' ? <Admin notify={notify} /> : null; break;
       default: screen = <Home data={data} />;

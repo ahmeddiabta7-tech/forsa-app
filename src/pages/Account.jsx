@@ -3,6 +3,7 @@ import { useApp, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, 
 import { GOVERNORATES } from '../lib/i18n.js';
 import { PAYMENT_INFO, PLAN } from '../config.js';
 import * as api from '../lib/api.js';
+import { PlanRules } from './Seller.jsx';
 
 // ---------- Plan & payments ----------
 export function Plan({ data, notify }) {
@@ -28,15 +29,11 @@ export function Plan({ data, notify }) {
       <Header title={t('plan')} back="/more" />
       <div className="card">
         <span className="eyebrow">{t('planTitle')}</span>
-        <p className="plan-big">
-          {plan.phase === 'active' ? t('activeUntil', { d: date(plan.paidUntil, lang) })
-            : plan.phase === 'trial' ? `${t('month1')} · ${t('daysLeft', { n: num(plan.daysLeft, lang) })}` : t('expired')}
-        </p>
-        <ul className="ticks">
-          <li><Icon name="check" size={16} />{t('planM1')}</li>
-          <li><Icon name="check" size={16} />{t('planSkip')}</li>
-          <li><Icon name="check" size={16} />{t('planM2')}</li>
-        </ul>
+        <p className="plan-big">{plan.phase === 'paid' ? t('planNow_paid', { d: date(plan.paidUntil, lang) }) : t(`planNow_${plan.phase}`)}</p>
+        {plan.phase === 'frozen'
+          ? <p className="form-error">{t('frozenBody', { d: num(Math.min(plan.lastMonth, PLAN.goalOrders), lang) })}</p>
+          : <p className="muted small">{plan.goalDone ? t('monthDone') : t('monthLine', { d: num(plan.delivered, lang), n: num(PLAN.goalOrders, lang) })} · {t('daysShort', { n: num(plan.daysLeft, lang) })}</p>}
+        <PlanRules />
       </div>
       <div className="card">
         <h3>{t('payHow')}</h3>

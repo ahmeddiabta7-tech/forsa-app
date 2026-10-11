@@ -1,6 +1,6 @@
 // Admin panel (English only, for the Forsa team).
 import React, { useMemo, useState } from 'react';
-import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, imgSrc } from '../core.jsx';
+import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, imgSrc, planState } from '../core.jsx';
 import { CATEGORIES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
@@ -197,7 +197,7 @@ function AdminSellers({ notify }) {
       const mine = data.orders.filter((o) => o.seller_id === p.id);
       const earned = mine.filter((o) => o.status === 'delivered').reduce((s, o) => s + orderProfit(o), 0);
       const paid = data.payouts.filter((x) => x.seller_id === p.id).reduce((s, x) => s + x.amount, 0);
-      return { ...p, orders: mine.length, delivered: mine.filter((o) => o.status === 'delivered').length, earned, paid, balance: earned - paid };
+      return { ...p, plan: planState(p, mine), orders: mine.length, delivered: mine.filter((o) => o.status === 'delivered').length, earned, paid, balance: earned - paid };
     }).sort((a, b) => b.balance - a.balance);
   }, [data]);
   if (loading) return <Spinner />;
@@ -209,7 +209,8 @@ function AdminSellers({ notify }) {
       <div className="list">
         {rows.map((r) => (
           <div key={r.id} className="card">
-            <div className="row-between"><b>{r.full_name || r.email}</b><span className="muted small">{r.role}</span></div>
+            <div className="row-between"><b>{r.full_name || r.email}</b><span className={`pill pill-${r.plan.phase === 'frozen' ? 'cancelled' : 'delivered'}`}>{{ frozen: 'Paused', paid: 'Paid', free: 'Free (earned)', first: 'Month 1' }[r.plan.phase]}</span></div>
+            <p className="small muted">This month: {r.plan.delivered}/3 delivered · {r.plan.daysLeft} days left{r.plan.paidUntil ? ` · Paid until ${date(r.plan.paidUntil, 'en')}` : ''}</p>
             <p className="small muted">{r.phone} · {r.email} · {r.city}{r.university ? ` · ${r.university}` : ''}</p>
             <p className="small">Orders {r.orders} · Delivered {r.delivered} · Earned {money(r.earned, 'en')} · Paid {money(r.paid, 'en')} · <b>Due {money(r.balance, 'en')}</b></p>
             {r.balance > 0 && <Button small onClick={() => setPayFor(r)}>Record payout</Button>}
@@ -295,10 +296,35 @@ function AdminServices({ notify }) {
               <select aria-label="Request status" value={r.status} onChange={(e) => change(r, e.target.value)}>
                 {['new', 'contacted', 'done'].map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
+              <RequestCost r={r} onAdded={() => { notify('Cost added to seller analytics'); reload(); }} />
             </div>
           ))}
         </div>
       )}
     </>
+  );
+}
+
+// What the seller paid Forsa for this service → added once as a cost in their Analytics.
+function RequestCost({ r, onAdded }) {
+  const [amount, setAmount] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const existing = (r.seller_expenses || [])[0];
+  if (existing) return <p className="small"><b>Cost in seller analytics:</b> {money(existing.amount, 'en')}</p>;
+  async function add() {
+    if (!(Number(amount) > 0)) { setErr('Enter the amount the seller paid.'); return; }
+    setBusy(true); setErr('');
+    try { await api.addRequestCost(r, amount); onAdded(); } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="stack" style={{ gap: 6 }}>
+      <label className="small" htmlFor={`rc-${r.id}`}>Seller paid (EGP) → add to their costs</label>
+      <div className="row" style={{ flexWrap: 'nowrap' }}>
+        <input id={`rc-${r.id}`} type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 1500" />
+        <Button small onClick={add} disabled={busy}>Add</Button>
+      </div>
+      {err && <p className="form-error">{err}</p>}
+    </div>
   );
 }

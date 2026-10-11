@@ -1,8 +1,8 @@
 // Growth pages: Analytics (charts + smart tips), Ideas tab, Services.
 import React, { useEffect, useState } from 'react';
 import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, Icon, money, num, date, pname, planState, weekdayName } from '../core.jsx';
-import { SERVICES } from '../lib/i18n.js';
-import { computeStats, inPeriod, profitSeries, bestSellers, getAdvice } from '../lib/advisor.js';
+import { SERVICES, COST_CATEGORIES } from '../lib/i18n.js';
+import { computeStats, inPeriod, expensesIn, profitSeries, bestSellers, getAdvice } from '../lib/advisor.js';
 import * as api from '../lib/api.js';
 
 // Turns a tip { key, vars } into text in the current language.
@@ -19,19 +19,22 @@ export function tipText(tip, t, lang) {
 const PERIODS = ['week', 'month', 'all'];
 
 // ---------- Analytics ----------
-export function Analytics({ data }) {
+export function Analytics({ data, reload, notify }) {
   const { t, lang, profile } = useApp();
   const [period, setPeriod] = useState('month');
   const [tips, setTips] = useState(null);
   const products = useLoad(() => api.listProducts(), []);
   const plan = planState(profile, data.orders);
   const orders = inPeriod(data.orders, period);
-  const s = computeStats(orders);
-  const series = profitSeries(data.orders, period);
+  const expenses = data.expenses || [];
+  const periodExpenses = expensesIn(expenses, period);
+  const s = computeStats(orders, periodExpenses);
+  const series = profitSeries(data.orders, period, expenses);
+  const [editCost, setEditCost] = useState(null);
   const best = bestSellers(orders, 5);
   useEffect(() => {
-    getAdvice({ orders: data.orders, plan, products: products.data || [] }).then(setTips).catch(() => setTips([]));
-  }, [data.orders, products.data]); // eslint-disable-line react-hooks/exhaustive-deps
+    getAdvice({ orders: data.orders, plan, products: products.data || [], expenses }).then(setTips).catch(() => setTips([]));
+  }, [data.orders, data.expenses, products.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusRows = [
     ['delivered', s.delivered], ['onTheWay', s.onTheWay], ['pending', s.pending], ['returned', s.returned], ['cancelled', s.cancelled],
@@ -45,26 +48,43 @@ export function Analytics({ data }) {
       </div>
 
       <div className="ink-card">
-        <span className="eyebrow">{t('profitChart')}</span>
-        <b className="big">{money(s.profit, lang)}</b>
-        <small>{t('revenue')} {money(s.revenue, lang)} · {t('costs')} {money(s.costs, lang)}</small>
+        <span className="eyebrow">{t('netProfit')}</span>
+        <b className="big">{money(s.net, lang)}</b>
+        <small>{t('revenue')} {money(s.revenue, lang)} · {t('costs')} {money(s.costs + s.other, lang)}</small>
       </div>
 
       <div className="stats two">
         <div className="stat"><span>{t('revenue')}</span><b>{money(s.revenue, lang)}</b></div>
-        <div className="stat"><span>{t('costs')}</span><b>{money(s.costs, lang)}</b></div>
+        <div className="stat"><span>{t('productCost')}</span><b>{money(s.costs, lang)}</b></div>
+        <button type="button" className="stat" onClick={() => setEditCost({})}><span>{t('otherCosts')}</span><b>{money(s.other, lang)}</b><span className="note">+ {t('addCost')}</span></button>
         <div className="stat"><span>{t('unitsSold')}</span><b>{num(s.units, lang)}</b></div>
         <div className="stat"><span>{t('returnRate')}</span><b>{num(Math.round(s.returnRate * 100), lang)}{lang === 'ar' ? '٪' : '%'}</b></div>
+        <div className="stat"><span>{t('ordersCount')}</span><b>{num(s.orders, lang)}</b></div>
       </div>
 
       <div className="card">
-        <div className="row-between"><h3>{t('profitChart')}</h3><span className="muted small">{t(`period_${period}`)}</span></div>
+        <div className="row-between"><h3>{t('netProfit')}</h3><span className="muted small">{t(`period_${period}`)}</span></div>
         <BarChart series={series} lang={lang} />
       </div>
 
       <div className="card">
         <h3>{t('revenueVsCost')}</h3>
-        <CompareBars rows={[[t('revenue'), s.revenue], [t('costs'), s.costs], [t('profitChart'), s.profit]]} lang={lang} />
+        <CompareBars rows={[[t('revenue'), s.revenue], [t('productCost'), s.costs, true], [t('otherCosts'), s.other, true], [t('netProfit'), s.net]]} lang={lang} />
+      </div>
+
+      <div className="card">
+        <div className="row-between"><h3>{t('costsTitle')}</h3><Button small onClick={() => setEditCost({})}>+ {t('addCost')}</Button></div>
+        <p className="muted small">{t('costsHint')}</p>
+        {periodExpenses.length === 0 ? <p className="small">{t('noCosts')}</p> : (
+          <div className="list">
+            {periodExpenses.map((x) => (
+              <button type="button" key={x.id} className="order-row" onClick={() => (x.created_by_admin ? null : setEditCost(x))} disabled={x.created_by_admin} style={x.created_by_admin ? { cursor: 'default' } : undefined}>
+                <div className="or-main"><b>{t(`cat_${x.category}`)}</b><span className="muted small">{date(x.spent_on, lang)}{x.note ? ` · ${x.note}` : ''}{x.created_by_admin ? ` · ${t('addedByForsa')}` : ''}</span></div>
+                <b className="small">−{money(x.amount, lang)}</b>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="card">
@@ -104,7 +124,52 @@ export function Analytics({ data }) {
         </div>
       )}
       <p className="muted small">{t('analyticsNote')}</p>
+      <CostSheet cost={editCost} onClose={() => setEditCost(null)} onDone={(msg) => { setEditCost(null); notify(t(msg)); reload(); }} />
     </div>
+  );
+}
+
+// Add / edit / delete one of the seller's own costs.
+function CostSheet({ cost, onClose, onDone }) {
+  const { t } = useApp();
+  const today = new Date().toISOString().slice(0, 10);
+  const [f, setF] = useState(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
+  useEffect(() => {
+    if (cost) setF({ id: cost.id, amount: cost.amount ?? '', category: cost.category || 'ads', spent_on: cost.spent_on || today, note: cost.note || '' });
+    setErr(''); setConfirmDel(false);
+  }, [cost]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!cost || !f) return null;
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  async function save(ev) {
+    ev.preventDefault();
+    const amount = Number(String(f.amount).replace(/[^\d.]/g, ''));
+    if (!(amount > 0)) { setErr(t('invalidAmount')); return; }
+    setBusy(true); setErr('');
+    try { await api.saveExpense({ ...f, amount, spent_on: f.spent_on > today ? today : f.spent_on }); onDone('costSaved'); }
+    catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  async function remove() {
+    setBusy(true);
+    try { await api.deleteExpense(f.id); onDone('costDeleted'); } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <Sheet open onClose={onClose} title={f.id ? t('editCost') : t('addCost')}>
+      <form onSubmit={save} noValidate className="stack">
+        <Field id="cs-a" label={t('amount')} error={err}><input id="cs-a" inputMode="numeric" dir="ltr" value={f.amount} onChange={set('amount')} /></Field>
+        <Field id="cs-c" label={t('category')}>
+          <select id="cs-c" value={f.category} onChange={set('category')}>{COST_CATEGORIES.map((c) => <option key={c} value={c}>{t(`cat_${c}`)}</option>)}</select>
+        </Field>
+        <Field id="cs-d" label={t('costDate')}><input id="cs-d" type="date" max={today} value={f.spent_on} onChange={set('spent_on')} /></Field>
+        <Field id="cs-n" label={t('costNote')}><input id="cs-n" maxLength={200} value={f.note} onChange={set('note')} /></Field>
+        <button type="submit" className="btn btn-primary block" disabled={busy}>{busy ? t('loading') : t('save')}</button>
+      </form>
+      {f.id && (confirmDel ? (
+        <div className="card warn stack"><p>{t('confirmDeleteCost')}</p><div className="row"><Button variant="danger" small onClick={remove} disabled={busy}>{t('deleteCost')}</Button><Button variant="ghost" small onClick={() => setConfirmDel(false)}>{t('keep')}</Button></div></div>
+      ) : <Button block variant="ghost" onClick={() => setConfirmDel(true)}>{t('deleteCost')}</Button>)}
+    </Sheet>
   );
 }
 
@@ -125,7 +190,7 @@ function BarChart({ series, lang }) {
         <line x1="0" x2={W} y1="16" y2="16" stroke="var(--line)" strokeDasharray="3 4" />
         {series.map((x, i) => {
           const h = x.value > 0 ? Math.max(3, (x.value / max) * (H - 22)) : 2;
-          return <rect key={i} x={4 + i * bw + bw * 0.15} y={H - h} width={bw * 0.7} height={h} rx={Math.min(3, bw * 0.2)} fill={x.value > 0 ? 'var(--ink)' : 'var(--line)'} />;
+          return <rect key={i} x={4 + i * bw + bw * 0.15} y={H - h} width={bw * 0.7} height={h} rx={Math.min(3, bw * 0.2)} fill={x.value > 0 ? 'var(--ink)' : x.value < 0 ? 'var(--bad)' : 'var(--line)'} />;
         })}
         {marks.map((i) => <text key={i} x={4 + i * bw + bw / 2} y={H + 14} textAnchor={i === 0 ? 'start' : i === series.length - 1 ? 'end' : 'middle'}>{label(series[i])}</text>)}
       </svg>
@@ -137,10 +202,10 @@ function CompareBars({ rows, lang }) {
   const max = Math.max(1, ...rows.map(([, v]) => Math.abs(v)));
   return (
     <div className="stack">
-      {rows.map(([name, v], i) => (
+      {rows.map(([name, v, light]) => (
         <div key={name} className="hbar">
           <span className="small">{name}</span><b className="small">{money(v, lang)}</b>
-          <div className="track"><i style={{ width: `${(Math.max(0, v) / max) * 100}%`, background: i === 1 ? 'var(--line-2)' : undefined }} /></div>
+          <div className="track"><i style={{ width: `${(Math.max(0, v) / max) * 100}%`, background: light ? 'var(--line-2)' : undefined }} /></div>
         </div>
       ))}
     </div>

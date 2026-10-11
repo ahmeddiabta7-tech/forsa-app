@@ -18,6 +18,7 @@ function demoLoad() {
     };
   }
   if (!d.service_requests) d.service_requests = [];
+  if (!d.expenses) d.expenses = [];
   return d;
 }
 let demo = live ? null : demoLoad();
@@ -198,6 +199,31 @@ export async function submitRequest(r) {
   demo.service_requests.push(row); demoSave(); return row;
 }
 
+// ---------- Seller costs (ads, marketing, packaging…) ----------
+export async function myExpenses() {
+  if (live) return db.select('seller_expenses', `select=*&seller_id=eq.${getSession()?.user?.id}&order=spent_on.desc,created_at.desc&limit=1000`);
+  return demo.expenses.filter((x) => x.seller_id === meId()).sort((a, b) => b.spent_on.localeCompare(a.spent_on) || byNewest(a, b));
+}
+
+export async function saveExpense(x) {
+  const row = { amount: Math.round(Number(x.amount)), category: x.category, note: (x.note || '').slice(0, 200), spent_on: x.spent_on };
+  if (live) return x.id ? db.update('seller_expenses', `id=eq.${x.id}`, row) : db.insert('seller_expenses', { ...row, seller_id: getSession()?.user?.id });
+  if (x.id) { const e = demo.expenses.find((r) => r.id === x.id); if (e.created_by_admin) throw new Error('Added by Forsa'); Object.assign(e, row); demoSave(); return e; }
+  const e = { ...row, id: uid(), seller_id: meId(), request_id: null, created_by_admin: false, created_at: now() };
+  demo.expenses.push(e); demoSave(); return e;
+}
+
+export async function deleteExpense(id) {
+  if (live) {
+    const rows = await db.remove('seller_expenses', `id=eq.${id}`);
+    if (!rows || rows.length === 0) throw new Error('Not deleted');
+    return true;
+  }
+  const e = demo.expenses.find((r) => r.id === id);
+  if (!e || e.created_by_admin) throw new Error('Not deleted');
+  demo.expenses = demo.expenses.filter((r) => r.id !== id); demoSave(); return true;
+}
+
 // ---------- Admin ----------
 export async function adminOrders() {
   if (live) return db.select('orders', `${ORDER_SELECT},profiles(full_name,phone,email)&order=created_at.desc&limit=500`);
@@ -206,7 +232,9 @@ export async function adminOrders() {
 
 export async function setOrderStatus(id, status) {
   if (live) return db.update('orders', `id=eq.${id}`, { status });
-  const o = demo.orders.find((x) => x.id === id); o.status = status; o.updated_at = now(); demoSave(); return o;
+  const o = demo.orders.find((x) => x.id === id);
+  if (status === 'delivered' && o.status !== 'delivered') o.delivered_at = now();
+  o.status = status; o.updated_at = now(); demoSave(); return o;
 }
 
 export async function adminPayments() {
@@ -229,7 +257,7 @@ export async function adminSellers() {
   if (live) {
     const [profiles, orders, payouts] = await Promise.all([
       db.select('profiles', 'select=*&order=created_at.desc&limit=1000'),
-      db.select('orders', 'select=seller_id,status,unit_price,wholesale_price,quantity&limit=5000'),
+      db.select('orders', 'select=seller_id,status,unit_price,wholesale_price,quantity,delivered_at,updated_at,created_at&limit=5000'),
       db.select('payouts', 'select=seller_id,amount&limit=5000'),
     ]);
     return { profiles, orders, payouts };
@@ -254,13 +282,22 @@ export async function setIdeaStatus(id, status) {
 }
 
 export async function adminRequests() {
-  if (live) return db.select('service_requests', 'select=*,profiles(full_name,phone,email,city)&order=created_at.desc&limit=300');
-  return demo.service_requests.map((r) => ({ ...r, profiles: pick(demo.profiles.find((p) => p.id === r.user_id)) })).sort(byNewest);
+  if (live) return db.select('service_requests', 'select=*,profiles(full_name,phone,email,city),seller_expenses(id,amount)&order=created_at.desc&limit=300');
+  return demo.service_requests.map((r) => ({ ...r, profiles: pick(demo.profiles.find((p) => p.id === r.user_id)), seller_expenses: demo.expenses.filter((e) => e.request_id === r.id) })).sort(byNewest);
 }
 
 export async function setRequestStatus(id, status) {
   if (live) return db.update('service_requests', `id=eq.${id}`, { status });
   const r = demo.service_requests.find((x) => x.id === id); r.status = status; demoSave(); return r;
+}
+
+// Adds what the seller paid Forsa for a service as a cost in their Analytics (once per request).
+export async function addRequestCost(r, amount) {
+  const row = { seller_id: r.user_id, amount: Math.round(Number(amount)), category: r.service === 'media_buying' ? 'ads' : 'marketing',
+    note: r.service === 'media_buying' ? 'Media buying (Forsa)' : 'Marketing agency (Forsa)', spent_on: new Date().toISOString().slice(0, 10), request_id: r.id, created_by_admin: true };
+  if (live) return db.insert('seller_expenses', row);
+  if (demo.expenses.some((e) => e.request_id === r.id)) throw new Error('Cost already added');
+  const e = { ...row, id: uid(), created_at: now() }; demo.expenses.push(e); demoSave(); return e;
 }
 
 // ---------- helpers ----------
