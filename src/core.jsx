@@ -58,7 +58,8 @@ export function planState(profile, orders) {
   const nowMs = Date.now();
   const until = profile.unlocked_until ? new Date(profile.unlocked_until).getTime() : 0;
   const unlocked = until > nowMs;
-  const held = orders.filter((o) => o.status === 'on_hold').length;
+  // Counts pieces (quantity), not orders: one order of 3 pieces reaches the goal.
+  const held = orders.filter((o) => o.status === 'on_hold').reduce((s, o) => s + (Number(o.quantity) || 1), 0);
   return {
     canSell: true,
     phase: unlocked ? 'open' : 'locked',

@@ -212,7 +212,7 @@ function AdminSellers({ notify }) {
         {rows.map((r) => (
           <div key={r.id} className="card">
             <div className="row-between"><b>{r.full_name || r.email}</b><span className={`pill pill-${r.plan.unlocked ? 'delivered' : 'pending'}`}>{r.plan.unlocked ? 'Unlocked' : 'Locked'}</span></div>
-            <p className="small muted">{r.plan.unlocked ? `Unlocked until ${date(r.plan.unlockedUntil, 'en')} (${r.plan.daysLeft} days left)` : `${r.plan.held}/3 orders on hold`}</p>
+            <p className="small muted">{r.plan.unlocked ? `Unlocked until ${date(r.plan.unlockedUntil, 'en')} (${r.plan.daysLeft} days left)` : `${r.plan.held}/3 pieces on hold`}</p>
             <p className="small muted">{r.phone} · {r.email} · {r.city}{r.university ? ` · ${r.university}` : ''}</p>
             <p className="small">Orders {r.orders} · Delivered {r.delivered} · Earned {money(r.earned, 'en')} · Paid {money(r.paid, 'en')} · <b>Due {money(r.balance, 'en')}</b></p>
             {r.balance > 0 && <Button small onClick={() => setPayFor(r)}>Record payout</Button>}

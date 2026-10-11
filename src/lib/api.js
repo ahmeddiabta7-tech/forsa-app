@@ -156,7 +156,7 @@ export async function createOrder(o) {
   const row = { ...o, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status, created_at: now(), updated_at: now() };
   demo.orders.push(row);
   const returned = { ...row }; // like the database: the saved row, before any release
-  if (status === 'on_hold' && demo.orders.filter((x) => x.seller_id === meId() && x.status === 'on_hold').length >= 3) demoRelease(me);
+  if (status === 'on_hold' && demo.orders.filter((x) => x.seller_id === meId() && x.status === 'on_hold').reduce((s, x) => s + (Number(x.quantity) || 1), 0) >= 3) demoRelease(me);
   demoSave(); return returned;
 }
 

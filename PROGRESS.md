@@ -1,5 +1,8 @@
 # Progress
 
+## Version 1.6 — Oct 2026
+- The unlock rule counts pieces (order quantity), not orders: one order of 3 pieces releases everything. `supabase/v1_6.sql`.
+
 ## Version 1.5 — built (Oct 2026)
 - New "3 orders" rule (replaces the monthly delivered rule), ready products only:
   a seller starts locked → new ready-product orders are saved "On hold". At 3 orders on hold, all are released and the
