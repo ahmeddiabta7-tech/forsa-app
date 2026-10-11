@@ -33,7 +33,8 @@ export default function App() {
     const [orders, payouts, expenses, businesses, fresh] = await Promise.all([
       api.myOrders(), api.myPayouts(), api.myExpenses().catch(() => []), api.myBusinesses().catch(() => []), api.getProfile().catch(() => null)]);
     setData({ orders, payouts, expenses, businesses });
-    if (fresh) setProfile((cur) => (cur && JSON.stringify(cur) === JSON.stringify(fresh) ? cur : fresh)); // plan / paid_until may have changed
+    if (fresh) setProfile((cur) => (cur && JSON.stringify(cur) === JSON.stringify(fresh) ? cur : fresh)); // plan / unlock may have changed
+    return { orders, fresh };
   }, []);
 
   const boot = useCallback(async () => {
@@ -104,7 +105,11 @@ export default function App() {
           : <AgencyHome unread={unread} notify={notify} />;
     } else switch (a) {
       case 'products': screen = <Products data={data} />; break;
-      case 'product': screen = <ProductDetail id={b} data={data} reload={reload} notify={notify} onOrdered={() => { notify(L.t('orderPlaced')); reload(); go('/orders'); }} />; break;
+      case 'product': screen = <ProductDetail id={b} data={data} reload={reload} notify={notify} onOrdered={async (o) => {
+        const r = await loadData().catch(() => null);
+        const released = o?.status === 'on_hold' && r?.fresh?.unlocked_until && new Date(r.fresh.unlocked_until) > new Date();
+        notify(L.t(released ? 'ordersReleased' : o?.status === 'on_hold' ? 'orderHeld' : 'orderPlaced')); go('/orders');
+      }} />; break;
       case 'orders': screen = <Orders data={data} openId={b} reload={reload} notify={notify} />; break;
       case 'earnings': screen = <Earnings data={data} />; break;
       case 'more': screen = <More onLogout={logout} notify={notify} onProfileSaved={() => api.getProfile().then(setProfile)} />; break;

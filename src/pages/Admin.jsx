@@ -5,7 +5,7 @@ import { CATEGORIES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
 const TABS = ['Orders', 'Products', 'Manufacturing', 'Payments', 'Sellers', 'Ideas', 'Services', 'Partners'];
-const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
+const STATUSES = ['on_hold', 'pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 
 export function Admin({ notify }) {
   const [tab, setTab] = useState('Orders');
@@ -211,8 +211,8 @@ function AdminSellers({ notify }) {
       <div className="list">
         {rows.map((r) => (
           <div key={r.id} className="card">
-            <div className="row-between"><b>{r.full_name || r.email}</b><span className={`pill pill-${r.plan.phase === 'frozen' ? 'cancelled' : 'delivered'}`}>{{ frozen: 'Paused', paid: 'Paid', free: 'Free (earned)', first: 'Month 1' }[r.plan.phase]}</span></div>
-            <p className="small muted">This month: {r.plan.delivered}/3 delivered · {r.plan.daysLeft} days left{r.plan.paidUntil ? ` · Paid until ${date(r.plan.paidUntil, 'en')}` : ''}</p>
+            <div className="row-between"><b>{r.full_name || r.email}</b><span className={`pill pill-${r.plan.unlocked ? 'delivered' : 'pending'}`}>{r.plan.unlocked ? 'Unlocked' : 'Locked'}</span></div>
+            <p className="small muted">{r.plan.unlocked ? `Unlocked until ${date(r.plan.unlockedUntil, 'en')} (${r.plan.daysLeft} days left)` : `${r.plan.held}/3 orders on hold`}</p>
             <p className="small muted">{r.phone} · {r.email} · {r.city}{r.university ? ` · ${r.university}` : ''}</p>
             <p className="small">Orders {r.orders} · Delivered {r.delivered} · Earned {money(r.earned, 'en')} · Paid {money(r.paid, 'en')} · <b>Due {money(r.balance, 'en')}</b></p>
             {r.balance > 0 && <Button small onClick={() => setPayFor(r)}>Record payout</Button>}
@@ -381,7 +381,7 @@ function AdminPartners({ notify }) {
 
 // ---------- Manufacturing: partner manufacturers + custom product requests ----------
 const C_STEPS = ['requested', 'quoted', 'accepted', 'sample', 'production', 'final_payment', 'live', 'cancelled'];
-const C_LABEL = { requested: 'New request', quoted: 'Quote sent', accepted: 'Waiting for deposit', sample: 'Sample', production: 'Production', final_payment: 'Waiting for final payment', live: 'Live', cancelled: 'Cancelled' };
+const C_LABEL = { requested: 'New request', quoted: 'Quote sent', accepted: 'Waiting for deposit', sample: 'Sample', production: 'Production', final_payment: 'Waiting for final payment', live: 'Done', cancelled: 'Cancelled' };
 
 function AdminManufacturing({ notify }) {
   const [view, setView] = useState('Requests');
@@ -411,6 +411,7 @@ function AdminCustomRequests({ notify }) {
               <div className="row-between"><b>{c.product_type} × {c.quantity}</b><span className={`pill pill-${c.status === 'live' ? 'delivered' : c.status === 'cancelled' ? 'cancelled' : 'pending'}`}>{C_LABEL[c.status]}</span></div>
               <p className="small">{c.details || '—'}</p>
               <p className="small muted">{c.manufacturers?.code} · {c.manufacturers?.name_en} · Business: {c.businesses?.name} · {c.seller?.full_name} · <span dir="ltr">{c.seller?.phone}</span> · {date(c.created_at, 'en')}</p>
+              <p className="small"><b>Delivery:</b> {c.fulfillment === 'self' ? `Whole batch to seller → ${c.ship_address}, ${c.ship_governorate}` : 'Forsa stores & ships each order'}</p>
               {c.quote_total != null && <p className="small">Quote: {money(c.quote_unit_price, 'en')}/pc · Total <b>{money(c.quote_total, 'en')}</b> · Deposit {money(c.deposit_amount, 'en')}</p>}
               {c.status === 'requested' || c.status === 'quoted' ? <QuoteForm c={c} onSaved={() => { notify('Quote sent to seller'); reload(); }} /> : null}
               {c.status === 'accepted' && (
@@ -424,7 +425,9 @@ function AdminCustomRequests({ notify }) {
               {c.status === 'final_payment' && (
                 <div className="stack" style={{ gap: 6 }}>
                   <p className="small">Final payment reference: <b dir="ltr">{c.balance_ref || 'not sent yet'}</b></p>
-                  <Button small disabled={!c.balance_ref} onClick={() => setLive(c)}>Confirm payment → Go live</Button>
+                  {c.fulfillment === 'self'
+                    ? <Button small disabled={!c.balance_ref} onClick={async () => { try { await api.markSentToSeller(c); notify('Marked as sent to seller'); reload(); } catch (e) { notify(e.message); } }}>Confirm payment → Batch sent to seller</Button>
+                    : <Button small disabled={!c.balance_ref} onClick={() => setLive(c)}>Confirm payment → Go live</Button>}
                 </div>
               )}
               <div className="row">

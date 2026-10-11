@@ -25,7 +25,6 @@ export function PlanRules() {
 function BalanceCard({ plan, balance }) {
   const { t, lang } = useApp();
   const [how, setHow] = useState(false);
-  const frozen = plan.phase === 'frozen';
   return (
     <div className="ink-card">
       <button type="button" className="ink-tap" onClick={() => go('/earnings')} aria-label={t('earnings')}>
@@ -33,25 +32,16 @@ function BalanceCard({ plan, balance }) {
         <b className="big">{money(balance, lang)}</b>
         <small>{t('paidWeekly')}</small>
       </button>
-      {frozen ? (
-        <div className="ink-alert">
-          <b>{t('frozen')}</b>
-          <span>{t('frozenBody', { d: num(Math.min(plan.lastMonth, PLAN.goalOrders), lang) })}</span>
-        </div>
-      ) : (
-        <>
-          <div className="tracker" role="img" aria-label={`${plan.delivered}/${PLAN.goalOrders}`}>
-            {Array.from({ length: PLAN.goalOrders }, (_, i) => <span key={i} className={i < plan.delivered ? 'on' : ''} />)}
-          </div>
-          <div className="ink-foot">
-            <span>{plan.goalDone ? t('monthDone') : t('monthLine', { d: num(plan.delivered, lang), n: num(PLAN.goalOrders, lang) })}</span>
-            <span>{t('daysShort', { n: num(plan.daysLeft, lang) })}</span>
-          </div>
-          {plan.phase === 'paid' && <div className="ink-foot"><span>{t('activeUntil', { d: date(plan.paidUntil, lang) })}</span></div>}
-        </>
-      )}
+      <div className="tracker" role="img" aria-label={plan.unlocked ? t('openTitle') : `${plan.held}/${PLAN.goalOrders}`}>
+        {Array.from({ length: PLAN.goalOrders }, (_, i) => <span key={i} className={plan.unlocked || i < plan.held ? 'on' : ''} />)}
+      </div>
+      <div className="ink-foot">
+        {plan.unlocked
+          ? <span><b>{t('openTitle')}</b> · {t('openLine', { d: num(plan.daysLeft, lang) })}</span>
+          : <span>{t('lockLine', { h: num(plan.held, lang), n: num(PLAN.goalOrders, lang), need: num(plan.need, lang) })}</span>}
+      </div>
       <div className="row" style={{ alignItems: 'center', gap: 14 }}>
-        {frozen && <Button onClick={() => go('/plan')}>{t('renew')}</Button>}
+        {!plan.unlocked && plan.held > 0 && <Button onClick={() => go('/plan')}>{t('renew')}</Button>}
         <button type="button" className="ink-link" onClick={() => setHow(true)}>{t('howItWorks')}</button>
       </div>
       <Sheet open={how} onClose={() => setHow(false)} title={t('howItWorks')}>
@@ -212,8 +202,8 @@ export function ProductDetail({ id, data, reload: reloadData, onOrdered, notify 
         <div className="profit-box"><span>{qty > 1 ? t('profit') : t('earnPerSale')}</span><b>{money(profit, lang)}</b></div>
         {inBiz.length > 0 && <div className="biz-chips">{inBiz.map((b) => <span key={b.id}>✓ {t('inBusiness', { b: b.name })}</span>)}</div>}
         {inBiz.length === 0 ? <Button block onClick={() => setAdding(true)}><Icon name="store" size={18} /> {t('addToBusiness')}</Button>
-          : plan.canSell ? <Button block onClick={() => setOpen(true)}>{t('createOrder')}</Button>
-            : <><p className="form-error">{t('cantSell')}</p><Button block onClick={() => go('/plan')}>{t('renew')}</Button></>}
+          : <Button block onClick={() => setOpen(true)}>{t('createOrder')}</Button>}
+        {inBiz.length > 0 && !p.owner_id && !plan.unlocked && <p className="small muted">{t('holdNotice', { h: num(plan.held, lang) })}</p>}
         {inBiz.length > 0 && inBiz.length < businesses.length && <Button block variant="ghost" onClick={() => setAdding(true)}><Icon name="store" size={18} /> {t('addToBusiness')}</Button>}
         <Button block variant="ghost" onClick={copy}><Icon name="copy" size={18} /> {t('copyPost')}</Button>
       </div>
@@ -291,7 +281,7 @@ export function OrderRow({ o, onClick }) {
   );
 }
 
-const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
+const STATUSES = ['on_hold', 'pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 
 export function Orders({ data, openId, reload, notify }) {
   const { t, lang } = useApp();
@@ -324,7 +314,7 @@ export function Orders({ data, openId, reload, notify }) {
               <dt>{t('address')}</dt><dd>{current.address}, {lang === 'ar' ? (GOVERNORATES.find((g) => g[0] === current.governorate)?.[1] || current.governorate) : current.governorate}</dd>
               {current.notes ? <><dt>{t('notes')}</dt><dd>{current.notes}</dd></> : null}
             </dl>
-            {current.status === 'pending' && (confirming ? (
+            {['pending', 'on_hold'].includes(current.status) && (confirming ? (
               <div className="card warn stack"><p>{t('cancelConfirm')}</p><div className="row"><Button variant="danger" small onClick={cancel}>{t('yesCancel')}</Button><Button variant="ghost" small onClick={() => setConfirming(false)}>{t('keep')}</Button></div></div>
             ) : <Button variant="ghost" block onClick={() => setConfirming(true)}>{t('cancelOrder')}</Button>)}
           </div>

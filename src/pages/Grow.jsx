@@ -39,7 +39,7 @@ export function Analytics({ data, reload, notify, embedded, businessId }) {
   }, [data.orders, data.expenses, products.data, businessId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusRows = [
-    ['delivered', s.delivered], ['onTheWay', s.onTheWay], ['pending', s.pending], ['returned', s.returned], ['cancelled', s.cancelled],
+    ['delivered', s.delivered], ['onTheWay', s.onTheWay], ['pending', s.pending], ['on_hold', s.onHold], ['returned', s.returned], ['cancelled', s.cancelled],
   ];
   const statusTotal = statusRows.reduce((a, [, n]) => a + n, 0);
   return (

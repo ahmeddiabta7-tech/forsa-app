@@ -49,34 +49,26 @@ export function imgSrc(url) { return url || ''; }
 export const orderProfit = (o) => (o.unit_price - o.wholesale_price) * o.quantity;
 
 // ---------- Plan logic ----------
-// Monthly rule (same as the database's can_sell):
-// months are 30-day blocks from signup. The first month is open. In every later month the seller can
-// sell if they delivered 3+ orders in the previous month, or if a paid period (EGP 100 = 30 days) is active.
+// "3 orders" rule (same as the database): a seller is locked until they have 3 ready-product orders on hold.
+// Reaching 3 (or an approved EGP 100 payment) releases them and unlocks 30 days, during which every order moves right away.
+// A seller's own custom products are never on hold.
 export const deliveredAt = (o) => new Date(o.delivered_at || o.updated_at || o.created_at).getTime();
 
 export function planState(profile, orders) {
-  const MONTH = PLAN.trialDays * 864e5;
-  const start = new Date(profile.trial_started_at).getTime();
   const nowMs = Date.now();
-  const k = Math.max(0, Math.floor((nowMs - start) / MONTH));
-  const monthStart = start + k * MONTH;
-  const monthEnd = monthStart + MONTH;
-  const delivered = orders.filter((o) => o.status === 'delivered');
-  const countIn = (a, b) => delivered.filter((o) => { const t = deliveredAt(o); return t >= a && t < b; }).length;
-  const thisMonth = countIn(monthStart, monthEnd);
-  const lastMonth = k > 0 ? countIn(monthStart - MONTH, monthStart) : 0;
-  const paid = Boolean(profile.paid_until && nowMs < new Date(profile.paid_until).getTime());
-  const earnedFree = k > 0 && lastMonth >= PLAN.goalOrders;
-  const canSell = k === 0 || earnedFree || paid;
+  const until = profile.unlocked_until ? new Date(profile.unlocked_until).getTime() : 0;
+  const unlocked = until > nowMs;
+  const held = orders.filter((o) => o.status === 'on_hold').length;
   return {
-    canSell,
-    phase: !canSell ? 'frozen' : paid ? 'paid' : k === 0 ? 'first' : 'free',
-    monthIndex: k,
-    delivered: Math.min(thisMonth, PLAN.goalOrders),
-    goalDone: thisMonth >= PLAN.goalOrders,
-    lastMonth,
-    daysLeft: Math.max(0, Math.ceil((monthEnd - nowMs) / 864e5)),
-    paidUntil: profile.paid_until,
+    canSell: true,
+    phase: unlocked ? 'open' : 'locked',
+    unlocked,
+    held: Math.min(held, PLAN.goalOrders),
+    need: Math.max(0, PLAN.goalOrders - held),
+    delivered: Math.min(held, PLAN.goalOrders), // kept for older callers (tips)
+    goalDone: unlocked,
+    daysLeft: unlocked ? Math.max(0, Math.ceil((until - nowMs) / 864e5)) : 0,
+    unlockedUntil: profile.unlocked_until,
   };
 }
 

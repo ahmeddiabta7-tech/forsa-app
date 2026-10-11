@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Icon, go, money, num, date } from '../core.jsx';
 import { PAYMENT_INFO } from '../config.js';
+import { GOVERNORATES } from '../lib/i18n.js';
 import { BizLogo } from './Business.jsx';
 import * as api from '../lib/api.js';
 
@@ -24,6 +25,32 @@ function MakerIcon({ m, size = 48 }) {
   return m?.image_url ? <img className="biz-logo" src={m.image_url} alt="" style={{ width: size, height: size }} />
     : <span className="biz-logo maker" style={{ width: size, height: size }}><Icon name="factory" size={size * 0.48} /></span>;
 }
+
+// Where the finished batch goes: Forsa stores & ships each order, or the whole batch goes to the seller.
+function FulfillmentPicker({ value, onChange, error }) {
+  const { t, lang } = useApp();
+  const set = (k) => (e) => onChange({ ...value, [k]: e.target.value });
+  return (
+    <fieldset className="choice">
+      <legend>{t('fulfillTitle')}</legend>
+      {['forsa', 'self'].map((k) => (
+        <label key={k} className={`choice-opt${value.fulfillment === k ? ' on' : ''}`}>
+          <input type="radio" name="fulfillment" value={k} checked={value.fulfillment === k} onChange={() => onChange({ ...value, fulfillment: k })} />
+          <span><b>{t(`fulfill_${k}`)}</b><small>{t(`fulfill_${k}_d`)}</small></span>
+        </label>
+      ))}
+      {value.fulfillment === 'self' && (
+        <div className="stack" style={{ gap: 10 }}>
+          <Field id="ff-gov" label={t('city')}>
+            <select id="ff-gov" value={value.ship_governorate || 'Cairo'} onChange={set('ship_governorate')}>{GOVERNORATES.map(([en, ar]) => <option key={en} value={en}>{lang === 'ar' ? ar : en}</option>)}</select>
+          </Field>
+          <Field id="ff-addr" label={t('shipAddress')} error={error}><textarea id="ff-addr" rows="2" maxLength={300} value={value.ship_address || ''} onChange={set('ship_address')} /></Field>
+        </div>
+      )}
+    </fieldset>
+  );
+}
+const govName = (g, lang) => (lang === 'ar' ? (GOVERNORATES.find((x) => x[0] === g)?.[1] || g) : g);
 
 // ---------- Make your own: manufacturers + my requests ----------
 export function MakeHome() {
@@ -76,7 +103,7 @@ export function ManufacturerPage({ id, data, notify }) {
   const makers = useLoad(() => api.listManufacturers(), []);
   const businesses = data.businesses || [];
   const m = (makers.data || []).find((x) => x.id === id);
-  const [f, setF] = useState({ business_id: '', product_type: '', details: '', quantity: '' });
+  const [f, setF] = useState({ business_id: '', product_type: '', details: '', quantity: '', fulfillment: 'forsa', ship_governorate: 'Cairo', ship_address: '' });
   const [err, setErr] = useState({});
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (m) setF((x) => ({ ...x, business_id: x.business_id || businesses[0]?.id || '', quantity: x.quantity || String(m.min_qty) })); }, [m?.id, businesses.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -90,6 +117,7 @@ export function ManufacturerPage({ id, data, notify }) {
     if (f.product_type.trim().length < 2) e.product_type = t('required');
     const q = Number(f.quantity);
     if (!(q >= m.min_qty)) e.quantity = t('minQtyErr', { n: num(m.min_qty, lang) });
+    if (f.fulfillment === 'self' && !f.ship_address.trim()) e.address = t('required');
     setErr(e); if (Object.keys(e).length) return;
     setBusy(true);
     try { const c = await api.startCustomRequest({ ...f, manufacturer: m }); notify(t('customSent')); go(`/make/r/${c.id}`); }
@@ -120,6 +148,7 @@ export function ManufacturerPage({ id, data, notify }) {
           <Field id="mk-det" label={t('yourChoices')}><textarea id="mk-det" rows="3" maxLength={2000} value={f.details} onChange={set('details')} /></Field>
           <Field id="mk-q" label={t('quantityPieces')} error={err.quantity}><input id="mk-q" inputMode="numeric" dir="ltr" value={f.quantity} onChange={set('quantity')} /></Field>
           {Number(f.quantity) > 0 && m.price_from > 0 && <p className="muted small">≈ {money(Number(f.quantity) * m.price_from, lang)}+</p>}
+          <FulfillmentPicker value={f} onChange={(v) => setF({ ...f, ...v })} error={err.address} />
           {err.form && <p className="form-error" role="alert">{err.form}</p>}
           <button type="submit" className="btn btn-primary block" disabled={busy}>{busy ? t('loading') : t('startProduct')}</button>
         </form>
@@ -135,6 +164,8 @@ export function CustomRequestPage({ id, notify, reload: reloadData }) {
   const [ref, setRef] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [editShip, setEditShip] = useState(null);
+  const [shipErr, setShipErr] = useState('');
   if (loading) return <div className="screen"><Header title="" back="/make" /><Spinner /></div>;
   if (error || !c) return <div className="screen"><Header title="" back="/make" /><ErrorBox error={error} onRetry={reload} /></div>;
   const idx = STEPS.indexOf(c.status);
@@ -160,9 +191,26 @@ export function CustomRequestPage({ id, notify, reload: reloadData }) {
           {STEPS.map((s, i) => <li key={s} className={i < idx ? 'done' : i === idx ? 'now' : ''}><i />{t(`step_${s}`)}</li>)}
         </ol>
       )}
-      <div className="ink-card"><span className="eyebrow">{t('status')}</span><b className="big" style={{ fontSize: 24 }}>{t(`cstatus_${c.status}`)}</b>
-        {c.status === 'live' && <small>{t('liveNote', { b: c.businesses?.name || '' })}</small>}
+      <div className="ink-card"><span className="eyebrow">{t('status')}</span><b className="big" style={{ fontSize: 24 }}>{c.status === 'live' && c.fulfillment === 'self' ? t('liveSelf') : t(`cstatus_${c.status}`)}</b>
+        {c.status === 'live' && <small>{c.fulfillment === 'self' ? t('liveNoteSelf', { a: `${c.ship_address}, ${govName(c.ship_governorate, lang)}` }) : t('liveNote', { b: c.businesses?.name || '' })}</small>}
       </div>
+      {c.status !== 'cancelled' && (editShip ? (
+        <div className="card stack">
+          <FulfillmentPicker value={editShip} onChange={setEditShip} error={shipErr} />
+          <div className="row">
+            <Button small disabled={busy} onClick={() => { if (editShip.fulfillment === 'self' && !editShip.ship_address.trim()) { setShipErr(t('required')); return; } setShipErr(''); act(() => api.updateFulfillment(c.id, editShip), 'saved').then(() => setEditShip(null)); }}>{t('save')}</Button>
+            <Button small variant="ghost" onClick={() => setEditShip(null)}>{t('keep')}</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="row-between"><span className="muted small">{t('deliveryLabel')}</span>
+            {!['live', 'cancelled'].includes(c.status) && !c.balance_confirmed && <button type="button" className="link-btn" onClick={() => setEditShip({ fulfillment: c.fulfillment, ship_governorate: c.ship_governorate || 'Cairo', ship_address: c.ship_address || '' })}>{t('change')}</button>}
+          </div>
+          <b>{t(`fulfill_${c.fulfillment || 'forsa'}`)}</b>
+          {c.fulfillment === 'self' && <span className="small">{c.ship_address}, {govName(c.ship_governorate, lang)}</span>}
+        </div>
+      ))}
       {c.quote_total != null && (
         <div className="card">
           <h3>{t('quoteTitle')}</h3>

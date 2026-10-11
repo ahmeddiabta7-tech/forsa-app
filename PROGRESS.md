@@ -1,5 +1,16 @@
 # Progress
 
+## Version 1.5 — built (Oct 2026)
+- New "3 orders" rule (replaces the monthly delivered rule), ready products only:
+  a seller starts locked → new ready-product orders are saved "On hold". At 3 orders on hold, all are released and the
+  seller is unlocked for 30 days (every order moves right away). After 30 days: locked again, count starts from 0.
+  EGP 100 (approved payment) releases held orders and unlocks 30 days per month paid. Own custom products are never on hold.
+  Enforced by the database (prepare_order / check_hold / apply_subscription; profiles.unlocked_until).
+- Custom products: the seller chooses delivery — Forsa stores & ships each order, or the whole batch to the seller's address
+  (changeable until the final payment). For "to the seller", admin confirms payment → "Batch sent to seller"
+  (production cost recorded, no product added in the app).
+- Database update: `supabase/v1_5.sql`.
+
 ## Version 1.4 — built (Oct 2026)
 - Products tab: "Ready products" (dropshipping) | "Make your own" (Forsa partner manufacturers, shown by code only).
 - Custom product flow: seller picks a manufacturer, describes the product (type, choices, quantity ≥ minimum) for one of

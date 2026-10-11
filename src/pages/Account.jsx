@@ -29,10 +29,7 @@ export function Plan({ data, notify }) {
       <Header title={t('plan')} back="/more" />
       <div className="card">
         <span className="eyebrow">{t('planTitle')}</span>
-        <p className="plan-big">{plan.phase === 'paid' ? t('planNow_paid', { d: date(plan.paidUntil, lang) }) : t(`planNow_${plan.phase}`)}</p>
-        {plan.phase === 'frozen'
-          ? <p className="form-error">{t('frozenBody', { d: num(Math.min(plan.lastMonth, PLAN.goalOrders), lang) })}</p>
-          : <p className="muted small">{plan.goalDone ? t('monthDone') : t('monthLine', { d: num(plan.delivered, lang), n: num(PLAN.goalOrders, lang) })} · {t('daysShort', { n: num(plan.daysLeft, lang) })}</p>}
+        <p className="plan-big">{plan.unlocked ? t('planNow_open', { d: date(plan.unlockedUntil, lang) }) : t('planNow_locked', { h: num(plan.held, lang) })}</p>
         <PlanRules />
       </div>
       <div className="card">

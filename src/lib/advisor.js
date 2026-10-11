@@ -42,6 +42,7 @@ export function computeStats(orders, expenses = []) {
     delivered: delivered.length,
     returned: returned.length,
     pending: orders.filter((o) => o.status === 'pending').length,
+    onHold: orders.filter((o) => o.status === 'on_hold').length,
     cancelled: orders.filter((o) => o.status === 'cancelled').length,
     onTheWay: orders.filter((o) => ['confirmed', 'shipped'].includes(o.status)).length,
     revenue, costs, profit: revenue - costs, units,
@@ -119,10 +120,7 @@ export function ruleTips(allOrders, plan, products = [], expenses = []) {
     tips.push({ key: 'tip_post3' });
     return tips;
   }
-  if (plan && plan.phase !== 'frozen' && !plan.goalDone) {
-    const left = Math.max(0, goalOrders - plan.delivered);
-    if (left > 0) tips.push({ key: 'tip_goal', vars: { n: left, d: plan.daysLeft } });
-  }
+  if (plan && !plan.unlocked && plan.need > 0 && plan.held > 0) tips.push({ key: 'tip_goal', vars: { n: plan.need } });
   if (s.pending > 0) tips.push({ key: 'tip_pending', vars: { n: s.pending } });
   if (s.delivered + s.returned >= 3 && s.returnRate >= 0.2) tips.push({ key: 'tip_returns', vars: { p: Math.round(s.returnRate * 100) } });
   const top = bestSellers(allOrders, 1)[0];

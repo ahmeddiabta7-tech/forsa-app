@@ -131,7 +131,7 @@ export async function deleteProduct(id) {
 }
 
 // ---------- Orders ----------
-const ORDER_SELECT = 'select=*,products(name_en,name_ar,image_url,factory_code)';
+const ORDER_SELECT = 'select=*,products(name_en,name_ar,image_url,factory_code,owner_id)';
 
 export async function myOrders() {
   if (live) {
@@ -150,14 +150,20 @@ export async function createOrder(o) {
   if (o.unit_price < p.min_price) throw new Error(`Selling price must be at least EGP ${p.min_price}`);
   const biz = demo.businesses.find((b) => b.id === o.business_id && b.owner_id === meId());
   if (!biz || !demo.business_products.some((bp) => bp.business_id === biz.id && bp.product_id === o.product_id)) throw new Error('Add this product to your business first');
-  const row = { ...o, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status: 'pending', created_at: now(), updated_at: now() };
-  demo.orders.push(row); demoSave(); return row;
+  const me = meProfile();
+  const unlocked = me.unlocked_until && Date.parse(me.unlocked_until) > Date.now();
+  const status = p.owner_id || unlocked ? 'pending' : 'on_hold';
+  const row = { ...o, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status, created_at: now(), updated_at: now() };
+  demo.orders.push(row);
+  const returned = { ...row }; // like the database: the saved row, before any release
+  if (status === 'on_hold' && demo.orders.filter((x) => x.seller_id === meId() && x.status === 'on_hold').length >= 3) demoRelease(me);
+  demoSave(); return returned;
 }
 
 export async function cancelOrder(id) {
   if (live) return db.update('orders', `id=eq.${id}`, { status: 'cancelled' });
   const o = demo.orders.find((x) => x.id === id);
-  if (o.status !== 'pending') throw new Error('Only pending orders can be cancelled');
+  if (!['pending', 'on_hold'].includes(o.status)) throw new Error('Only pending orders can be cancelled');
   o.status = 'cancelled'; o.updated_at = now(); demoSave(); return o;
 }
 
@@ -250,8 +256,9 @@ export async function reviewPayment(id, status) {
   const s = demo.subscription_payments.find((x) => x.id === id);
   if (status === 'approved' && s.status !== 'approved') {
     const p = demo.profiles.find((x) => x.id === s.seller_id);
-    const from = Math.max(Date.now(), p.paid_until ? Date.parse(p.paid_until) : 0);
-    p.paid_until = new Date(from + s.months * 30 * 864e5).toISOString(); p.goal_waived = true;
+    const from = Math.max(Date.now(), p.unlocked_until ? Date.parse(p.unlocked_until) : 0);
+    p.unlocked_until = p.paid_until = new Date(from + s.months * 30 * 864e5).toISOString(); p.goal_waived = true;
+    demo.orders.filter((x) => x.seller_id === p.id && x.status === 'on_hold').forEach((x) => { x.status = 'pending'; });
   }
   s.status = status; s.reviewed_at = now(); demoSave(); return s;
 }
@@ -260,12 +267,12 @@ export async function adminSellers() {
   if (live) {
     const [profiles, orders, payouts] = await Promise.all([
       db.select('profiles', 'select=*&order=created_at.desc&limit=1000'),
-      db.select('orders', 'select=seller_id,status,unit_price,wholesale_price,quantity,delivered_at,updated_at,created_at&limit=5000'),
+      db.select('orders', 'select=seller_id,status,unit_price,wholesale_price,quantity,delivered_at,updated_at,created_at,products(owner_id)&limit=5000'),
       db.select('payouts', 'select=seller_id,amount&limit=5000'),
     ]);
     return { profiles, orders, payouts };
   }
-  return { profiles: demo.profiles.map(pick), orders: demo.orders, payouts: demo.payouts };
+  return { profiles: demo.profiles.map(pick), orders: demo.orders.map(withProduct), payouts: demo.payouts };
 }
 
 export async function recordPayout(row) {
@@ -468,11 +475,12 @@ export async function getCustomRequest(id) {
 }
 
 // Creates the chat thread first, then the request linked to it.
-export async function startCustomRequest({ business_id, manufacturer, product_type, details, quantity }) {
+export async function startCustomRequest({ business_id, manufacturer, product_type, details, quantity, fulfillment = 'forsa', ship_governorate = '', ship_address = '' }) {
   const q = Math.round(Number(quantity));
   const summary = `${product_type.trim()} · ${q} pcs`;
   const thread = await submitRequest({ service: 'custom_product', business_id, details: summary, budget: '' });
-  const row = { business_id, manufacturer_id: manufacturer.id, thread_id: thread.id, product_type: product_type.trim(), details: details.trim(), quantity: q };
+  const row = { business_id, manufacturer_id: manufacturer.id, thread_id: thread.id, product_type: product_type.trim(), details: details.trim(), quantity: q,
+    fulfillment, ship_governorate: fulfillment === 'self' ? ship_governorate : '', ship_address: fulfillment === 'self' ? ship_address.trim().slice(0, 300) : '' };
   if (live) return db.insert('custom_requests', { ...row, seller_id: getSession()?.user?.id });
   if (q < manufacturer.min_qty) throw new Error(`Minimum quantity is ${manufacturer.min_qty}`);
   const c = { ...row, id: uid(), seller_id: meId(), status: 'requested', quote_unit_price: null, quote_total: null, deposit_amount: null, quote_note: '',
@@ -485,6 +493,7 @@ async function patchCustom(id, patch) {
   const c = demo.custom_requests.find((x) => x.id === id); Object.assign(c, patch, { updated_at: now() }); demoSave(); return c;
 }
 export const acceptQuote = (id) => patchCustom(id, { status: 'accepted' });
+export const updateFulfillment = (id, f) => patchCustom(id, { fulfillment: f.fulfillment, ship_governorate: f.fulfillment === 'self' ? f.ship_governorate : '', ship_address: f.fulfillment === 'self' ? f.ship_address.trim().slice(0, 300) : '' });
 export const cancelCustom = (id) => patchCustom(id, { status: 'cancelled' });
 export const submitDepositRef = (id, ref) => patchCustom(id, { deposit_ref: ref.trim().slice(0, 80) });
 export const submitBalanceRef = (id, ref) => patchCustom(id, { balance_ref: ref.trim().slice(0, 80) });
@@ -495,6 +504,21 @@ export async function adminCustomRequests() {
 }
 export const adminUpdateCustom = (id, patch) => patchCustom(id, patch);
 
+// Production cost is recorded once (on go live / sent to seller).
+async function recordProductionCost(c) {
+  const cost = { seller_id: c.seller_id, business_id: c.business_id, amount: Number(c.quote_total) || 0, category: 'production',
+    note: `${c.product_type} × ${c.quantity}`, spent_on: new Date().toISOString().slice(0, 10), request_id: c.thread_id, created_by_admin: true };
+  if (cost.amount <= 0) return;
+  if (live) { try { await db.insert('seller_expenses', cost); } catch (e) { if (e.code !== '23505') throw e; } return; }
+  if (!demo.expenses.some((e) => e.request_id === c.thread_id)) { demo.expenses.push({ ...cost, id: uid(), created_at: now() }); demoSave(); }
+}
+
+// Batch delivered to the seller's own place: no product in the app, just close the request.
+export async function markSentToSeller(c) {
+  await recordProductionCost(c);
+  return patchCustom(c.id, { status: 'live', balance_confirmed: true });
+}
+
 // Final step: the private product is created, added to the seller's business,
 // and the batch price is recorded once as a production cost.
 export async function goLive(c, product) {
@@ -502,12 +526,7 @@ export async function goLive(c, product) {
   const productId = created?.id;
   if (!productId) throw new Error('Product was not created');
   await addToBusiness(c.business_id, productId);
-  const cost = { seller_id: c.seller_id, business_id: c.business_id, amount: Number(c.quote_total) || 0, category: 'production',
-    note: `${c.product_type} × ${c.quantity}`, spent_on: new Date().toISOString().slice(0, 10), request_id: c.thread_id, created_by_admin: true };
-  if (cost.amount > 0) {
-    if (live) await db.insert('seller_expenses', cost);
-    else if (!demo.expenses.some((e) => e.request_id === c.thread_id)) { demo.expenses.push({ ...cost, id: uid(), created_at: now() }); demoSave(); }
-  }
+  await recordProductionCost(c);
   return patchCustom(c.id, { status: 'live', balance_confirmed: true, product_id: productId });
 }
 
@@ -515,7 +534,11 @@ export async function goLive(c, product) {
 function demoBiz(id) { const b = demo.businesses.find((x) => x.id === id); return b ? { name: b.name, page_url: b.page_url, category: b.category, city: b.city, description: b.description, logo_url: b.logo_url } : null; }
 function withProduct(o) {
   const p = demo.products.find((x) => x.id === o.product_id) || {};
-  return { ...o, products: { name_en: p.name_en, name_ar: p.name_ar, image_url: p.image_url, factory_code: p.factory_code } };
+  return { ...o, products: { name_en: p.name_en, name_ar: p.name_ar, image_url: p.image_url, factory_code: p.factory_code, owner_id: p.owner_id || null } };
+}
+function demoRelease(me) {
+  demo.orders.filter((x) => x.seller_id === me.id && x.status === 'on_hold').forEach((x) => { x.status = 'pending'; x.updated_at = now(); });
+  me.unlocked_until = new Date(Date.now() + 30 * 864e5).toISOString();
 }
 function pick(p) { if (!p) return null; const { password, ...r } = p; return r; }
 function byNewest(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); }
