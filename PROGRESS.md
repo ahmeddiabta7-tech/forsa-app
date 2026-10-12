@@ -1,5 +1,7 @@
 # Progress
 
+> Pending change requests from Advisor mode: see `REQUESTS.md`.
+
 ## Version 1.6 — Oct 2026
 - The unlock rule counts pieces (order quantity), not orders: one order of 3 pieces releases everything. `supabase/v1_6.sql`.
 
