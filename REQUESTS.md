@@ -6,34 +6,38 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 
 ---
 
-## R1. Hold the money, not the package (replaces the "on hold" orders rule)
+## R1. Seller approval gate (ready products only)
+- A new seller signs up, creates a business with its page link (Instagram / Facebook / TikTok / online shop),
+  then taps **"Apply to sell"**.
+- Until approved: they can browse products but cannot add them or place orders. Make your own needs **no** approval.
+- Admin → new "Applications" list: business name, page link (opens), seller info → **Approve** / **Reject** (with a short reason).
+- The bar is **seriousness, not followers**: a new page with few followers is fine if it is a real selling page.
+- Rejected sellers see the reason plus a short guide ("Create your page in 10 minutes: name, logo, 3 product posts")
+  and can apply again.
+
+## R2. Hold the money, not the package (replaces the "on hold" orders rule)
 - Remove "on hold" orders. Every ready-product order goes to Forsa right away (status `pending`).
-- A seller's **profit** from ready products is **locked** until, in the current cycle, they have
-  **3 pieces delivered** to **at least 2 different customers** (different customer phone numbers).
-  The seller's own phone number does **not** count as one of those customers.
-- When reached: all locked profit is released into the normal weekly payout, and the seller is
-  **unlocked for 30 days** (profit released normally during that time).
-- After 30 days: locked again, count starts from 0 (3 new pieces, 2+ customers), **or** pay EGP 100
-  (admin approves) to unlock profit for 30 days.
+- A seller's **profit** from ready products is **locked** until, in the current cycle, **3 pieces are delivered**.
+  Orders to the seller's **own registered phone number do not count** (checked automatically; formats like 010… / +2010… are matched).
+- When reached: all locked profit is released into the normal weekly payout, and the seller is **unlocked for 30 days**
+  (profit released normally during that time).
+- After 30 days: locked again, count starts from 0, **or** pay EGP 100 (admin approves) to unlock profit for 30 days.
 - The seller's own custom products (Make your own) stay outside this rule.
 - Enforce in the database; mirror in the app. Migrate existing `on_hold` orders to `pending`.
 - Update all texts (How it works, intro slide 3, Home card, Plan page, product notice, Admin → Sellers) in English and Arabic.
 
-## R2. Ordering for yourself is allowed, at the full price
-- No blocking. A seller may order for himself, but the price is the same as for any customer
-  (never below the minimum price, which already includes the profit margin).
-- His own phone number does not count toward the "2 different customers" in R1.
-
-## R3. Customer confirmation before an order moves
-- Forsa calls every customer before an order goes to shipping.
-- Admin → Orders: a clear "Call customer" step on each new order (customer name + phone, buttons
-  "Confirmed" / "Unreachable" / "Cancelled by customer"). Only confirmed orders move to shipping.
-- Seller sees the result on the order ("Confirmed with customer" / "Customer cancelled").
+## R3. Ordering for yourself is allowed, at the full price
+- No blocking. A seller may order for himself, but the price is never below the minimum price
+  (which already includes the profit margin) — the same as any customer pays.
+- Orders to his own phone number never count toward the 3 pieces in R2.
+- **Self-orders never pay profit, even after unlocking** (a purchase, not a sale) — recommended; confirm with Ahmed when building.
 
 ## R4. Payout details in My Account
 - Seller adds how to receive money: method (bank account / InstaPay / Vodafone Cash) and the details
   (bank name + account holder + account/IBAN, or InstaPay address, or Vodafone Cash number).
 - Only the seller and admin can see them. Admin sees them when recording a payout.
+- Suggested (decide when building): Vodafone Cash / InstaPay must be on the seller's registered phone number,
+  so sellers register their real number (makes the own-number check in R2 reliable).
 - Home: balance card shows how withdrawal works ("Paid every week to your InstaPay ...") and a link
   to add payout details if missing.
 
@@ -55,9 +59,14 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 
 ---
 
+## Removed after discussion
+- Forsa team calling every customer (too costly). Order confirmation will be automatic later (courier or WhatsApp/SMS).
+- The "at least 2 different customers" condition (the approval gate makes it unnecessary).
+
 ## Later (not now)
-- Cheating alerts in Admin: many "different" customers of one seller at the same address, or the
-  same customer phone used repeatedly.
+- Cheating alerts in Admin: same customer phone used repeatedly by one seller, a customer phone that belongs to
+  another seller, or many "different" customers at the same address.
+- Automatic order confirmation (courier or WhatsApp/SMS) to reduce refused orders.
 - Shipping paid in advance by the customer (for new sellers / risky orders) — after courier contracts are signed.
 - Return costs taken only from the seller's existing balance (never negative) — after courier contracts.
 - AI analytics and business advisor monthly subscription.
