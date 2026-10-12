@@ -2,11 +2,17 @@
 
 Agreed with Ahmed in Advisor mode on 12 Oct 2026 (full reasoning: "Forsa_Business_Decisions.docx").
 **Status: waiting.** App mode builds these only when Ahmed says to apply them.
+
+## ⚠️ Open problems to solve (on hold — do not build)
+1. **Preventing personal purchases** (sellers buying products for themselves through Forsa, competing with real sellers).
+   On hold since 12 Oct 2026 until a suitable solution is found. R1, R2 and R3 below are the ideas discussed so far
+   (approval gate, hold the money, self-orders at full price, own-number check) — **none are approved for building yet.**
+   When Ahmed asks "what problems do we have to solve?", mention this one first.
 Everything else in the app stays as it is (no new tabs, Make your own unchanged).
 
 ---
 
-## R1. Seller approval gate (ready products only)
+## R1. Seller approval gate (ready products only) — ON HOLD (part of open problem 1)
 - A new seller signs up, creates a business with its page link (Instagram / Facebook / TikTok / online shop),
   then taps **"Apply to sell"**.
 - Until approved: they can browse products but cannot add them or place orders. Make your own needs **no** approval.
@@ -15,7 +21,7 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 - Rejected sellers see the reason plus a short guide ("Create your page in 10 minutes: name, logo, 3 product posts")
   and can apply again.
 
-## R2. Hold the money, not the package (replaces the "on hold" orders rule)
+## R2. Hold the money, not the package (replaces the "on hold" orders rule) — ON HOLD (part of open problem 1)
 - Remove "on hold" orders. Every ready-product order goes to Forsa right away (status `pending`).
 - A seller's **profit** from ready products is **locked** until, in the current cycle, **3 pieces are delivered**.
   Orders to the seller's **own registered phone number do not count** (checked automatically; formats like 010… / +2010… are matched).
@@ -26,7 +32,7 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 - Enforce in the database; mirror in the app. Migrate existing `on_hold` orders to `pending`.
 - Update all texts (How it works, intro slide 3, Home card, Plan page, product notice, Admin → Sellers) in English and Arabic.
 
-## R3. Ordering for yourself is allowed, at the full price
+## R3. Ordering for yourself is allowed, at the full price — ON HOLD (part of open problem 1)
 - No blocking. A seller may order for himself, but the price is never below the minimum price
   (which already includes the profit margin) — the same as any customer pays.
 - Orders to his own phone number never count toward the 3 pieces in R2.
