@@ -59,9 +59,8 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 - Keep the percentage in one setting (config) so it can change later.
 
 ## R7. Forsa percentage on Make-your-own deals
-- Admin quote form: add "Forsa %" (default to be decided by Ahmed) so the quote shows the factory
-  price and Forsa's share separately in Admin; the seller sees one total price.
-- **Needs Ahmed's decision on the default %** before building.
+- Admin quote form: add a "Forsa %" field. **No default** — Ahmed sets the percentage manually for each deal.
+- The quote shows the factory price and Forsa's share separately in Admin; the seller sees one total price.
 
 ---
 
