@@ -63,7 +63,7 @@ h3 { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
 
 /* forms */
 .field { display: flex; flex-direction: column; gap: 6px; }
-.field label { font-size: 13px; font-weight: 600; color: #4b4741; }
+.field label, .field .label-like { font-size: 13px; font-weight: 600; color: #4b4741; }
 input, select, textarea { width: 100%; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 12px 14px; outline: none; }
 input:focus, select:focus, textarea:focus { border-color: var(--text); box-shadow: 0 0 0 3px rgba(17,17,17,.06); }
 input[type="range"] { padding: 0; border: 0; background: none; accent-color: var(--ink); box-shadow: none; }
@@ -358,3 +358,15 @@ main:not(.with-nav) .composer { bottom: 0; }
 .choice-opt span { display: flex; flex-direction: column; gap: 2px; }
 .choice-opt small { color: var(--muted); font-size: 12px; }
 .pill-on_hold { color: var(--warn); background: var(--warn-bg); }
+
+/* v1.7: locked profit, Forsa fee, market price, payout details */
+.ink-card .locked-line { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; color: var(--on-ink); font-weight: 600; }
+.price-grid.four { grid-template-columns: repeat(2, 1fr); row-gap: 12px; }
+.fee-kv { font-size: 13px; }
+.fee-kv dd { text-align: end; font-variant-numeric: tabular-nums; }
+.or-side .icon { vertical-align: -2px; }
+.method-opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.method-opts button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 12px; padding: 10px 6px; font: inherit; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
+.method-opts button[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.field input[readonly] { background: transparent; color: var(--muted); }
+.ink-card .btn-primary { background: var(--on-ink); color: var(--ink); border-color: var(--on-ink); }

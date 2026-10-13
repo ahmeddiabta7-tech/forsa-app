@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   useApp, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, AccountButton, MiniBars, greeting,
-  money, num, date, pname, imgSrc, orderProfit, planState, earningsSummary,
+  money, num, date, pname, imgSrc, orderProfit, orderGross, orderFee, feeFor, planState, earningsSummary, latinDigits,
 } from '../core.jsx';
 import { computeStats, inPeriod, expensesIn, profitSeries, getAdvice } from '../lib/advisor.js';
 import { tipText } from './Grow.jsx';
@@ -16,21 +16,22 @@ export function PlanRules() {
   const { t } = useApp();
   return (
     <ul className="ticks">
-      {['planM1', 'planSkip', 'planM2', 'planCount'].map((k) => <li key={k}><Icon name="check" size={16} />{t(k)}</li>)}
+      {['planM1', 'planSkip', 'planM2', 'planCount', 'planFee'].map((k) => <li key={k}><Icon name="check" size={16} />{t(k)}</li>)}
     </ul>
   );
 }
 
 // ---------- Balance card with this month's tracker (Home) ----------
 function BalanceCard({ plan, balance }) {
-  const { t, lang } = useApp();
+  const { t, lang, profile } = useApp();
   const [how, setHow] = useState(false);
   return (
     <div className="ink-card">
       <button type="button" className="ink-tap" onClick={() => go('/earnings')} aria-label={t('earnings')}>
         <span className="eyebrow">{t('balance')}</span>
         <b className="big">{money(balance, lang)}</b>
-        <small>{t('paidWeekly')}</small>
+        <small>{profile.payout_method ? t('paidTo', { m: t(`pm_${profile.payout_method}`) }) : t('paidWeekly')}</small>
+        {plan.lockedProfit > 0 && <small className="locked-line"><Icon name="lock" size={14} /> {t('lockedProfit')} {money(plan.lockedProfit, lang)}</small>}
       </button>
       <div className="tracker" role="img" aria-label={plan.unlocked ? t('openTitle') : `${plan.held}/${PLAN.goalOrders}`}>
         {Array.from({ length: PLAN.goalOrders }, (_, i) => <span key={i} className={plan.unlocked || i < plan.held ? 'on' : ''} />)}
@@ -41,7 +42,7 @@ function BalanceCard({ plan, balance }) {
           : <span>{t('lockLine', { h: num(plan.held, lang), n: num(PLAN.goalOrders, lang), need: num(plan.need, lang) })}</span>}
       </div>
       <div className="row" style={{ alignItems: 'center', gap: 14 }}>
-        {!plan.unlocked && plan.held > 0 && <Button onClick={() => go('/plan')}>{t('renew')}</Button>}
+        {!profile.payout_method && <Button onClick={() => go('/more')}>{t('addPayout')}</Button>}
         <button type="button" className="ink-link" onClick={() => setHow(true)}>{t('howItWorks')}</button>
       </div>
       <Sheet open={how} onClose={() => setHow(false)} title={t('howItWorks')}>
@@ -133,7 +134,7 @@ export function Products({ data: appData }) {
                 <b className="pname">{pname(p, lang)}</b>
                 <span className="muted small">Forsa Factory {p.factory_code}</span>
                 <div className="prow"><span className="muted small">{t('wholesale')}</span><span>{money(p.wholesale_price, lang)}</span></div>
-                <div className="prow"><span className="muted small">{t('youEarn')}</span><span className="earn">+{money(p.suggested_price - p.wholesale_price, lang)}</span></div>
+                <div className="prow"><span className="muted small">{t('youEarn')}</span><span className="earn">+{money((p.suggested_price - p.wholesale_price) - feeFor(p, p.suggested_price - p.wholesale_price), lang)}</span></div>
               </div>
             </button>
           ))}
@@ -158,7 +159,9 @@ export function ProductDetail({ id, data, reload: reloadData, onOrdered, notify 
   if (error || !p) return <div className="screen"><Header title="" back="/products" /><ErrorBox error={error} onRetry={reload} /></div>;
   const sell = price ?? p.suggested_price;
   const max = Math.round(p.wholesale_price * 2.5);
-  const profit = (sell - p.wholesale_price) * qty;
+  const gross = (sell - p.wholesale_price) * qty;
+  const fee = feeFor(p, gross);
+  const profit = gross - fee;
   const inBiz = businesses.filter((b) => b.product_ids.includes(p.id));
   const post = lang === 'ar'
     ? `✨ ${p.name_ar}\n${p.description_ar}\nالسعر: ${num(sell, 'ar')} جنيه\nالدفع عند الاستلام 🚚 ابعتلي رسالة واطلب دلوقتي!`
@@ -179,8 +182,9 @@ export function ProductDetail({ id, data, reload: reloadData, onOrdered, notify 
           <span>{t('shipsIn', { n: num(p.ship_days, lang) })}</span>
         </div>
         <p className="muted">{lang === 'ar' ? p.description_ar : p.description_en}</p>
-        <div className="price-grid">
+        <div className={`price-grid${p.market_price ? ' four' : ''}`}>
           <div><span>{t('wholesale')}</span><b>{money(p.wholesale_price, lang)}</b></div>
+          {p.market_price ? <div><span>{t('marketPrice')}</span><b>{money(p.market_price, lang)}</b></div> : null}
           <div><span>{t('minPrice')}</span><b>{money(p.min_price, lang)}</b></div>
           <div><span>{t('suggested')}</span><b>{money(p.suggested_price, lang)}</b></div>
         </div>
@@ -199,7 +203,8 @@ export function ProductDetail({ id, data, reload: reloadData, onOrdered, notify 
         </Field>
       </div>
       <div className="stack">
-        <div className="profit-box"><span>{qty > 1 ? t('profit') : t('earnPerSale')}</span><b>{money(profit, lang)}</b></div>
+        {fee > 0 && <dl className="kv fee-kv"><dt>{t('profitBeforeFee')}</dt><dd>{money(gross, lang)}</dd><dt>{t('forsaFeeLine', { p: num(PLAN.feePct, lang) })}</dt><dd>−{money(fee, lang)}</dd></dl>}
+        <div className="profit-box"><span>{fee > 0 ? t('youKeep') : qty > 1 ? t('profit') : t('earnPerSale')}</span><b>{money(profit, lang)}</b></div>
         {inBiz.length > 0 && <div className="biz-chips">{inBiz.map((b) => <span key={b.id}>✓ {t('inBusiness', { b: b.name })}</span>)}</div>}
         {inBiz.length === 0 ? <Button block onClick={() => setAdding(true)}><Icon name="store" size={18} /> {t('addToBusiness')}</Button>
           : <Button block onClick={() => setOpen(true)}>{t('createOrder')}</Button>}
@@ -226,7 +231,8 @@ function OrderSheet({ open, onClose, product, price, qty, businesses, onDone }) 
     ev.preventDefault();
     const e = {};
     if (!f.customer_name.trim()) e.customer_name = t('required');
-    if (!/^(\+?20)?0?1[0125]\d{8}$/.test(f.customer_phone.replace(/[\s-]/g, ''))) e.customer_phone = t('invalidPhone');
+    const phone = latinDigits(f.customer_phone).replace(/[\s-]/g, '');
+    if (!/^(\+?20)?0?1[0125]\d{8}$/.test(phone)) e.customer_phone = t('invalidPhone');
     if (!f.address.trim()) e.address = t('required');
     if (price < product.min_price) e.price = t('priceTooLow', { p: money(product.min_price, lang) });
     if (!bizId) e.business = t('businessRequired');
@@ -234,7 +240,7 @@ function OrderSheet({ open, onClose, product, price, qty, businesses, onDone }) 
     if (Object.keys(e).length) return;
     setBusy(true); setServerError('');
     try {
-      const o = await api.createOrder({ ...f, customer_phone: f.customer_phone.replace(/[\s-]/g, ''), product_id: product.id, business_id: bizId, unit_price: price, quantity: qty });
+      const o = await api.createOrder({ ...f, customer_phone: phone, product_id: product.id, business_id: bizId, unit_price: price, quantity: qty });
       setF({ customer_name: '', customer_phone: '', governorate: 'Cairo', address: '', notes: '' });
       onDone(o);
     } catch (err) { setServerError(err.message); }
@@ -259,7 +265,7 @@ function OrderSheet({ open, onClose, product, price, qty, businesses, onDone }) 
         <Field id="os-notes" label={t('notes')}><input id="os-notes" value={f.notes} onChange={set('notes')} /></Field>
         {errors.price && <p className="form-error">{errors.price}</p>}
         {serverError && <p className="form-error" role="alert">{serverError}</p>}
-        <div className="profit-box"><span>{t('profit')}</span><b>{money((price - product.wholesale_price) * qty, lang)}</b></div>
+        <div className="profit-box"><span>{t('youKeep')}</span><b>{money((price - product.wholesale_price) * qty - feeFor(product, (price - product.wholesale_price) * qty), lang)}</b></div>
         <button type="submit" className="btn btn-primary block" disabled={busy}>{busy ? t('loading') : t('placeOrder')}</button>
       </form>
     </Sheet>
@@ -276,12 +282,12 @@ export function OrderRow({ o, onClick }) {
         <b>{pname(o.products, lang)}</b>
         <span className="muted small">{t('orderNo', { n: o.order_no })} · {date(o.created_at, lang)}</span>
       </div>
-      <div className="or-side"><StatusPill status={o.status} /><span className={o.status === 'cancelled' || o.status === 'returned' ? 'muted small' : 'earn small'}>+{money(orderProfit(o), lang)}</span></div>
+      <div className="or-side"><StatusPill status={o.status} /><span className={o.status === 'cancelled' || o.status === 'returned' ? 'muted small' : 'earn small'}>{o.status === 'delivered' && o.profit_locked ? <><Icon name="lock" size={12} /> </> : '+'}{money(orderProfit(o), lang)}</span></div>
     </button>
   );
 }
 
-const STATUSES = ['on_hold', 'pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
+const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 
 export function Orders({ data, openId, reload, notify }) {
   const { t, lang } = useApp();
@@ -308,13 +314,15 @@ export function Orders({ data, openId, reload, notify }) {
             <div className="row-between"><b>{pname(current.products, lang)} × {num(current.quantity, lang)}</b><StatusPill status={current.status} /></div>
             <dl className="kv">
               <dt>{t('yourPrice')}</dt><dd>{money(current.unit_price, lang)}</dd>
-              <dt>{t('profit')}</dt><dd className="earn">{money(orderProfit(current), lang)}</dd>
+              {orderFee(current) > 0 && <><dt>{t('profitBeforeFee')}</dt><dd>{money(orderGross(current), lang)}</dd><dt>{t('forsaFeeLine', { p: num(Number(current.fee_pct), lang) })}</dt><dd>−{money(orderFee(current), lang)}</dd></>}
+              <dt>{t('youKeep')}</dt><dd className="earn">{money(orderProfit(current), lang)}{current.status === 'delivered' && current.profit_locked ? ` · ${t('locked')}` : ''}</dd>
               <dt>{t('customerName')}</dt><dd>{current.customer_name}</dd>
               <dt>{t('customerPhone')}</dt><dd dir="ltr">{current.customer_phone}</dd>
               <dt>{t('address')}</dt><dd>{current.address}, {lang === 'ar' ? (GOVERNORATES.find((g) => g[0] === current.governorate)?.[1] || current.governorate) : current.governorate}</dd>
               {current.notes ? <><dt>{t('notes')}</dt><dd>{current.notes}</dd></> : null}
             </dl>
-            {['pending', 'on_hold'].includes(current.status) && (confirming ? (
+            {current.own_order && <p className="small muted">{t('ownOrder')}</p>}
+            {current.status === 'pending' && (confirming ? (
               <div className="card warn stack"><p>{t('cancelConfirm')}</p><div className="row"><Button variant="danger" small onClick={cancel}>{t('yesCancel')}</Button><Button variant="ghost" small onClick={() => setConfirming(false)}>{t('keep')}</Button></div></div>
             ) : <Button variant="ghost" block onClick={() => setConfirming(true)}>{t('cancelOrder')}</Button>)}
           </div>
@@ -326,7 +334,7 @@ export function Orders({ data, openId, reload, notify }) {
 
 // ---------- Earnings ----------
 export function Earnings({ data }) {
-  const { t, lang } = useApp();
+  const { t, lang, profile } = useApp();
   const sum = earningsSummary(data.orders, data.payouts);
   return (
     <div className="screen">
@@ -334,11 +342,14 @@ export function Earnings({ data }) {
       <div className="ink-card">
         <span className="eyebrow">{t('balance')}</span>
         <b className="big">{money(sum.balance, lang)}</b>
-        <small>{t('paidWeekly')}</small>
+        <small>{profile.payout_method ? t('paidTo', { m: t(`pm_${profile.payout_method}`) }) : t('paidWeekly')}</small>
       </div>
+      {!profile.payout_method && <button type="button" className="card link-card" onClick={() => go('/more')}><span className="svc-icon"><Icon name="bank" /></span><div><b>{t('addPayout')}</b><p className="muted small">{t('payoutMissing')}</p></div><Icon name="chevron" size={16} /></button>}
       <div className="stats two">
         <div className="stat"><span>{t('totalEarned')}</span><b>{money(sum.earned, lang)}</b></div>
+        <div className="stat"><span>{t('lockedProfit')}</span><b>{money(sum.locked, lang)}</b>{sum.locked > 0 && <span className="note">{t('lockedNote')}</span>}</div>
         <div className="stat"><span>{t('pendingEarn')}</span><b>{money(sum.onTheWay, lang)}</b></div>
+        <div className="stat"><span>{t('forsaFee')}</span><b>{money(sum.fees, lang)}</b><span className="note">{t('feePctNote', { p: num(PLAN.feePct, lang) })}</span></div>
       </div>
       <p className="muted small">{t('earnedNote')}</p>
       <div className="section-head"><h2>{t('payouts')}</h2></div>
@@ -347,7 +358,7 @@ export function Earnings({ data }) {
           {data.payouts.map((p) => (
             <div key={p.id} className="order-row static">
               <Icon name="wallet" />
-              <div className="or-main"><b>{money(p.amount, lang)}</b><span className="muted small">{date(p.paid_at, lang)} · {p.method === 'vodafone_cash' ? 'Vodafone Cash' : 'InstaPay'}</span></div>
+              <div className="or-main"><b>{money(p.amount, lang)}</b><span className="muted small">{date(p.paid_at, lang)} · {t(`pm_${p.method}`)}</span></div>
             </div>
           ))}
         </div>

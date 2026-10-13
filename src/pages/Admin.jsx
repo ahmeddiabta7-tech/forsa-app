@@ -1,11 +1,12 @@
 // Admin panel (English only, for the Forsa team).
 import React, { useMemo, useState } from 'react';
-import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, imgSrc, planState, go } from '../core.jsx';
+import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, orderFee, imgSrc, planState, earningsSummary, go } from '../core.jsx';
 import { CATEGORIES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
-const TABS = ['Orders', 'Products', 'Manufacturing', 'Payments', 'Sellers', 'Ideas', 'Services', 'Partners'];
-const STATUSES = ['on_hold', 'pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
+const TABS = ['Orders', 'Products', 'Manufacturing', 'Sellers', 'Ideas', 'Services', 'Partners'];
+const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
+const PAY_METHODS = { instapay: 'InstaPay', vodafone_cash: 'Vodafone Cash', bank: 'Bank account' };
 
 export function Admin({ notify }) {
   const [tab, setTab] = useState('Orders');
@@ -17,7 +18,6 @@ export function Admin({ notify }) {
       </div>
       {tab === 'Orders' && <AdminOrders notify={notify} />}
       {tab === 'Products' && <AdminProducts notify={notify} />}
-      {tab === 'Payments' && <AdminPayments notify={notify} />}
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
       {tab === 'Ideas' && <AdminIdeas notify={notify} />}
       {tab === 'Services' && <AdminServices notify={notify} />}
@@ -50,7 +50,8 @@ function AdminOrders({ notify }) {
               <div className="row-between"><b>#{o.order_no} · {o.products?.name_en} × {o.quantity}</b><span className={`pill pill-${o.status}`}>{o.status}</span></div>
               <p className="small">Customer: <b>{o.customer_name}</b> · <span dir="ltr">{o.customer_phone}</span><br />{o.address}, {o.governorate}{o.notes ? ` · Note: ${o.notes}` : ''}</p>
               <p className="small muted">Seller: {o.profiles?.full_name} · {o.profiles?.phone} · Factory {o.products?.factory_code} · {date(o.created_at, 'en')}</p>
-              <p className="small">Sell {money(o.unit_price, 'en')} · Wholesale {money(o.wholesale_price, 'en')} · Seller profit <b>{money(orderProfit(o), 'en')}</b> · Collect <b>{money(o.unit_price * o.quantity, 'en')}</b></p>
+              <p className="small">Sell {money(o.unit_price, 'en')} · Wholesale {money(o.wholesale_price, 'en')} · Forsa fee {money(orderFee(o), 'en')}{Number(o.fee_pct) ? ` (${Number(o.fee_pct)}%)` : ''} · Seller keeps <b>{money(orderProfit(o), 'en')}</b>{o.status === 'delivered' && o.profit_locked ? ' (locked)' : ''} · Collect <b>{money(o.unit_price * o.quantity, 'en')}</b></p>
+              {o.own_order && <p className="small"><b>Seller's own number</b> — doesn't count toward 3 pieces.</p>}
               <label className="small" htmlFor={`st-${o.id}`}>Status</label>
               <select id={`st-${o.id}`} value={o.status} onChange={(e) => change(o, e.target.value)}>
                 {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -63,7 +64,7 @@ function AdminOrders({ notify }) {
   );
 }
 
-const EMPTY_PRODUCT = { name_en: '', name_ar: '', description_en: '', description_ar: '', category: 'Clothing', factory_code: '', region: '', quality_score: 4.5, wholesale_price: '', min_price: '', suggested_price: '', ship_days: 3, image_url: '', stock: 0, active: true };
+const EMPTY_PRODUCT = { name_en: '', name_ar: '', description_en: '', description_ar: '', category: 'Clothing', factory_code: '', region: '', quality_score: 4.5, wholesale_price: '', market_price: '', min_price: '', suggested_price: '', ship_days: 3, image_url: '', stock: 0, active: true };
 
 function AdminProducts({ notify }) {
   const { loading, data, error, reload } = useLoad(() => api.listProducts({ all: true }), []);
@@ -77,7 +78,7 @@ function AdminProducts({ notify }) {
         {data.map((p) => (
           <button type="button" key={p.id} className="order-row" onClick={() => setEdit({ ...p })}>
             <img src={imgSrc(p.image_url)} alt="" />
-            <div className="or-main"><b>{p.name_en}</b><span className="muted small">{p.owner_id ? 'Private (custom) · ' : ''}{p.factory_code} · W {p.wholesale_price} · Min {p.min_price} · Stock {p.stock}</span></div>
+            <div className="or-main"><b>{p.name_en}</b><span className="muted small">{p.owner_id ? 'Private (custom) · ' : ''}{p.factory_code} · W {p.wholesale_price}{p.market_price ? ` · Market ${p.market_price}` : ''} · Min {p.min_price} · Stock {p.stock}</span></div>
             <span className={`pill pill-${p.active ? 'delivered' : 'cancelled'}`}>{p.active ? 'Active' : 'Hidden'}</span>
           </button>
         ))}
@@ -109,6 +110,9 @@ function ProductForm({ product, onClose, onSaved }) {
     finally { setBusy(false); }
   }
   const set = (k) => (e) => setF({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+  const auto = api.priceDefaults({ ...f, min_price: '', suggested_price: f.suggested_price });
+  const minAuto = auto.min_price;
+  const sugAuto = api.priceDefaults(f).suggested_price;
   async function upload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -119,9 +123,13 @@ function ProductForm({ product, onClose, onSaved }) {
   }
   async function save(ev) {
     ev.preventDefault();
-    const w = Number(f.wholesale_price); const m = Number(f.min_price); const s = Number(f.suggested_price);
+    const w = Number(f.wholesale_price); const pr = api.priceDefaults(f);
     if (!f.name_en || !f.name_ar || !f.factory_code) { setErr('English name, Arabic name and factory code are required.'); return; }
-    if (!(w > 0) || m < w || s < m) { setErr('Prices must be: wholesale > 0, minimum ≥ wholesale, suggested ≥ minimum.'); return; }
+    if (!(w > 0)) { setErr('Enter the wholesale price.'); return; }
+    if (pr.market_price != null && !(pr.market_price > 0)) { setErr('Market price must be above 0.'); return; }
+    if (pr.min_price == null) { setErr('Enter a minimum price, or a market price (minimum = 90% of it).'); return; }
+    if (pr.min_price < w) { setErr(`Minimum price (EGP ${pr.min_price}) can't be below wholesale (EGP ${w}).`); return; }
+    if (pr.suggested_price < pr.min_price) { setErr('Suggested price must be at least the minimum price.'); return; }
     setBusy(true); setErr('');
     try { await api.saveProduct(f); onSaved(); } catch (er) { setErr(er.message); } finally { setBusy(false); }
   }
@@ -140,8 +148,9 @@ function ProductForm({ product, onClose, onSaved }) {
           <Field id="ap-rg" label="Region"><input id="ap-rg" value={f.region} onChange={set('region')} /></Field>
           <Field id="ap-q" label="Quality (1–5)"><input id="ap-q" type="number" step="0.1" min="1" max="5" value={f.quality_score} onChange={set('quality_score')} /></Field>
           <Field id="ap-w" label="Wholesale (EGP)"><input id="ap-w" type="number" value={f.wholesale_price} onChange={set('wholesale_price')} /></Field>
-          <Field id="ap-m" label="Minimum price"><input id="ap-m" type="number" value={f.min_price} onChange={set('min_price')} /></Field>
-          <Field id="ap-s" label="Suggested price"><input id="ap-s" type="number" value={f.suggested_price} onChange={set('suggested_price')} /></Field>
+          <Field id="ap-mk" label="Market price"><input id="ap-mk" type="number" value={f.market_price ?? ''} onChange={set('market_price')} /></Field>
+          <Field id="ap-m" label="Minimum price" hint={f.min_price === '' && minAuto ? `Empty = ${minAuto} (90% of market)` : undefined}><input id="ap-m" type="number" value={f.min_price} onChange={set('min_price')} placeholder={minAuto ? String(minAuto) : ''} /></Field>
+          <Field id="ap-s" label="Suggested price" hint={f.suggested_price === '' && sugAuto ? `Empty = ${sugAuto}` : undefined}><input id="ap-s" type="number" value={f.suggested_price} onChange={set('suggested_price')} placeholder={sugAuto ? String(sugAuto) : ''} /></Field>
           <Field id="ap-d" label="Ships in (days)"><input id="ap-d" type="number" value={f.ship_days} onChange={set('ship_days')} /></Field>
           <Field id="ap-st" label="Stock"><input id="ap-st" type="number" value={f.stock} onChange={set('stock')} /></Field>
         </div>
@@ -168,28 +177,6 @@ function ProductForm({ product, onClose, onSaved }) {
   );
 }
 
-function AdminPayments({ notify }) {
-  const { loading, data, error, reload } = useLoad(() => api.adminPayments(), []);
-  if (loading) return <Spinner />;
-  if (error) return <ErrorBox error={error} onRetry={reload} />;
-  async function review(p, status) {
-    try { await api.reviewPayment(p.id, status); notify(`Payment ${status}`); reload(); } catch (e) { notify(e.message); }
-  }
-  if (!data.length) return <div className="card empty"><p>No subscription payments yet.</p></div>;
-  return (
-    <div className="list">
-      {data.map((p) => (
-        <div key={p.id} className="card">
-          <div className="row-between"><b>{money(p.amount, 'en')} · {p.months} month{p.months > 1 ? 's' : ''}</b><span className={`pill pill-${p.status === 'approved' ? 'delivered' : p.status === 'rejected' ? 'cancelled' : 'pending'}`}>{p.status}</span></div>
-          <p className="small">{p.profiles?.full_name} · {p.profiles?.phone} · {p.profiles?.email}</p>
-          <p className="small muted">{p.method === 'vodafone_cash' ? 'Vodafone Cash' : 'InstaPay'} · Ref <span dir="ltr">{p.reference}</span> · {date(p.created_at, 'en')}</p>
-          {p.status === 'pending' && <div className="row"><Button small onClick={() => review(p, 'approved')}>Approve</Button><Button small variant="ghost" onClick={() => review(p, 'rejected')}>Reject</Button></div>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function AdminSellers({ notify }) {
   const { loading, data, error, reload } = useLoad(() => api.adminSellers(), []);
   const [payFor, setPayFor] = useState(null);
@@ -197,9 +184,9 @@ function AdminSellers({ notify }) {
     if (!data) return [];
     return data.profiles.map((p) => {
       const mine = data.orders.filter((o) => o.seller_id === p.id);
-      const earned = mine.filter((o) => o.status === 'delivered').reduce((s, o) => s + orderProfit(o), 0);
-      const paid = data.payouts.filter((x) => x.seller_id === p.id).reduce((s, x) => s + x.amount, 0);
-      return { ...p, plan: planState(p, mine), orders: mine.length, delivered: mine.filter((o) => o.status === 'delivered').length, earned, paid, balance: earned - paid };
+      const sum = earningsSummary(mine, data.payouts.filter((x) => x.seller_id === p.id));
+      return { ...p, plan: planState(p, mine), orders: mine.length, delivered: mine.filter((o) => o.status === 'delivered').length,
+        earned: sum.earned, locked: sum.locked, fees: sum.fees, paid: sum.paidOut, balance: sum.earned - sum.paidOut };
     }).sort((a, b) => b.balance - a.balance);
   }, [data]);
   if (loading) return <Spinner />;
@@ -212,9 +199,10 @@ function AdminSellers({ notify }) {
         {rows.map((r) => (
           <div key={r.id} className="card">
             <div className="row-between"><b>{r.full_name || r.email}</b><span className={`pill pill-${r.plan.unlocked ? 'delivered' : 'pending'}`}>{r.plan.unlocked ? 'Unlocked' : 'Locked'}</span></div>
-            <p className="small muted">{r.plan.unlocked ? `Unlocked until ${date(r.plan.unlockedUntil, 'en')} (${r.plan.daysLeft} days left)` : `${r.plan.held}/3 pieces on hold`}</p>
+            <p className="small muted">{r.plan.unlocked ? `Unlocked until ${date(r.plan.unlockedUntil, 'en')} (${r.plan.daysLeft} days left)` : `Locked · ${r.plan.held}/3 pieces delivered`}</p>
             <p className="small muted">{r.phone} · {r.email} · {r.city}{r.university ? ` · ${r.university}` : ''}</p>
-            <p className="small">Orders {r.orders} · Delivered {r.delivered} · Earned {money(r.earned, 'en')} · Paid {money(r.paid, 'en')} · <b>Due {money(r.balance, 'en')}</b></p>
+            <p className="small">Orders {r.orders} · Delivered {r.delivered} · Earned {money(r.earned, 'en')} · Locked {money(r.locked, 'en')} · Forsa fees {money(r.fees, 'en')} · Paid {money(r.paid, 'en')} · <b>Due {money(r.balance, 'en')}</b></p>
+            <p className="small">{r.payout_method ? <>Pays to: <b>{PAY_METHODS[r.payout_method]}</b> · {r.payout_holder}{r.payout_bank ? ` · ${r.payout_bank}` : ''} · <span dir="ltr">{r.payout_account}</span></> : <span className="muted">No payout details yet</span>}</p>
             {r.balance > 0 && <Button small onClick={() => setPayFor(r)}>Record payout</Button>}
           </div>
         ))}
@@ -227,7 +215,7 @@ function AdminSellers({ notify }) {
 function PayoutForm({ seller, onClose, onSaved }) {
   const [f, setF] = useState({ amount: '', method: 'instapay', reference: '' });
   const [err, setErr] = useState('');
-  React.useEffect(() => { if (seller) setF({ amount: seller.balance, method: 'instapay', reference: '' }); }, [seller]);
+  React.useEffect(() => { if (seller) setF({ amount: seller.balance, method: seller.payout_method || 'instapay', reference: '' }); }, [seller]);
   if (!seller) return null;
   async function save(ev) {
     ev.preventDefault();
@@ -237,9 +225,10 @@ function PayoutForm({ seller, onClose, onSaved }) {
   return (
     <Sheet open onClose={onClose} title={`Payout to ${seller.full_name}`}>
       <form onSubmit={save} noValidate className="stack">
-        <p className="small muted">Balance due: {money(seller.balance, 'en')}</p>
+        <p className="small muted">Balance due: {money(seller.balance, 'en')}{seller.locked > 0 ? ` · ${money(seller.locked, 'en')} locked (not due yet)` : ''}</p>
+        {seller.payout_method ? <p className="small">Send to <b>{PAY_METHODS[seller.payout_method]}</b>: {seller.payout_holder}{seller.payout_bank ? ` · ${seller.payout_bank}` : ''} · <b dir="ltr">{seller.payout_account}</b></p> : <p className="small form-error">This seller hasn't added payout details yet.</p>}
         <Field id="po-a" label="Amount (EGP)"><input id="po-a" type="number" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
-        <Field id="po-m" label="Method"><select id="po-m" value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}><option value="instapay">InstaPay</option><option value="vodafone_cash">Vodafone Cash</option></select></Field>
+        <Field id="po-m" label="Method"><select id="po-m" value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}>{Object.entries(PAY_METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
         <Field id="po-r" label="Reference"><input id="po-r" value={f.reference} onChange={(e) => setF({ ...f, reference: e.target.value })} /></Field>
         {err && <p className="form-error">{err}</p>}
         <button type="submit" className="btn btn-primary block">Save payout</button>
@@ -412,7 +401,7 @@ function AdminCustomRequests({ notify }) {
               <p className="small">{c.details || '—'}</p>
               <p className="small muted">{c.manufacturers?.code} · {c.manufacturers?.name_en} · Business: {c.businesses?.name} · {c.seller?.full_name} · <span dir="ltr">{c.seller?.phone}</span> · {date(c.created_at, 'en')}</p>
               <p className="small"><b>Delivery:</b> {c.fulfillment === 'self' ? `Whole batch to seller → ${c.ship_address}, ${c.ship_governorate}` : 'Forsa stores & ships each order'}</p>
-              {c.quote_total != null && <p className="small">Quote: {money(c.quote_unit_price, 'en')}/pc · Total <b>{money(c.quote_total, 'en')}</b> · Deposit {money(c.deposit_amount, 'en')}</p>}
+              {c.quote_total != null && <p className="small">Quote: {money(c.quote_unit_price, 'en')}/pc · Total <b>{money(c.quote_total, 'en')}</b> · Deposit {money(c.deposit_amount, 'en')}{c.custom_request_costs ? <> · Factory {money(c.custom_request_costs.factory_unit_price, 'en')}/pc · Forsa {Number(c.custom_request_costs.forsa_pct)}% = <b>{money(c.quote_total - c.custom_request_costs.factory_unit_price * c.quantity, 'en')}</b></> : null}</p>}
               {c.status === 'requested' || c.status === 'quoted' ? <QuoteForm c={c} onSaved={() => { notify('Quote sent to seller'); reload(); }} /> : null}
               {c.status === 'accepted' && (
                 <div className="stack" style={{ gap: 6 }}>
@@ -443,28 +432,41 @@ function AdminCustomRequests({ notify }) {
   );
 }
 
+// R7: the admin enters the factory price and Forsa's % for this deal (no default). The seller sees only the final price.
 function QuoteForm({ c, onSaved }) {
-  const [unit, setUnit] = useState(c.quote_unit_price ?? '');
+  const saved = c.custom_request_costs;
+  const [factory, setFactory] = useState(saved?.factory_unit_price ?? '');
+  const [pct, setPct] = useState(saved?.forsa_pct ?? '');
   const [dep, setDep] = useState(50);
   const [note, setNote] = useState(c.quote_note || '');
   const [err, setErr] = useState('');
-  const total = Math.round(Number(unit) * c.quantity) || 0;
+  const [busy, setBusy] = useState(false);
+  const fp = Number(factory); const pc = Number(pct);
+  const unit = fp > 0 && pct !== '' && pc >= 0 ? Math.round(fp * (1 + pc / 100)) : 0;
+  const total = unit * c.quantity;
+  const forsaShare = total - Math.round(fp * c.quantity);
   async function send() {
-    if (!(Number(unit) > 0)) { setErr('Enter the price per piece.'); return; }
-    try { await api.adminUpdateCustom(c.id, { quote_unit_price: Math.round(Number(unit)), quote_total: total, deposit_amount: Math.round(total * Number(dep) / 100), quote_note: note.slice(0, 1000), status: 'quoted' }); onSaved(); }
-    catch (e) { setErr(e.message); }
+    if (!(fp > 0)) { setErr('Enter the factory price per piece.'); return; }
+    if (pct === '' || !(pc >= 0) || pc > 500) { setErr('Enter Forsa % for this deal (0–500).'); return; }
+    setBusy(true); setErr('');
+    try {
+      await api.saveDealCost(c.id, fp, pc);
+      await api.adminUpdateCustom(c.id, { quote_unit_price: unit, quote_total: total, deposit_amount: Math.round(total * Number(dep) / 100), quote_note: note.slice(0, 1000), status: 'quoted' });
+      onSaved();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
   }
   return (
     <div className="stack" style={{ gap: 8, borderTop: '1px solid var(--line)', paddingTop: 10 }}>
       <b className="small">{c.status === 'quoted' ? 'Update quote' : 'Send quote'}</b>
       <div className="two-col">
-        <Field id={`q-u-${c.id}`} label="Price per piece (EGP)"><input id={`q-u-${c.id}`} type="number" value={unit} onChange={(e) => setUnit(e.target.value)} /></Field>
+        <Field id={`q-f-${c.id}`} label="Factory price / piece (EGP)"><input id={`q-f-${c.id}`} type="number" min="0" value={factory} onChange={(e) => setFactory(e.target.value)} /></Field>
+        <Field id={`q-p-${c.id}`} label="Forsa % (this deal)"><input id={`q-p-${c.id}`} type="number" min="0" max="500" step="0.5" value={pct} onChange={(e) => setPct(e.target.value)} /></Field>
         <Field id={`q-d-${c.id}`} label="Deposit %"><input id={`q-d-${c.id}`} type="number" min="0" max="100" value={dep} onChange={(e) => setDep(e.target.value)} /></Field>
       </div>
-      <p className="small">Total {money(total, 'en')} · Deposit {money(Math.round(total * Number(dep) / 100), 'en')}</p>
+      <p className="small">Seller price {money(unit, 'en')}/pc · Total <b>{money(total, 'en')}</b> · Deposit {money(Math.round(total * Number(dep) / 100), 'en')}<br />Factory {money(Math.round(fp * c.quantity) || 0, 'en')} · <b>Forsa share {money(unit ? forsaShare : 0, 'en')}</b> (seller only sees the total)</p>
       <Field id={`q-n-${c.id}`} label="Note to seller (optional)"><input id={`q-n-${c.id}`} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       {err && <p className="form-error">{err}</p>}
-      <Button small onClick={send}>Send quote</Button>
+      <Button small onClick={send} disabled={busy}>Send quote</Button>
     </div>
   );
 }

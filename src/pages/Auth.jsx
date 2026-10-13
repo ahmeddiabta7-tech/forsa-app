@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useApp, Button, Field, go, LangSwitch, Icon } from '../core.jsx';
+import { useApp, Button, Field, go, LangSwitch, Icon, latinDigits } from '../core.jsx';
 import { GOVERNORATES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
@@ -112,7 +112,7 @@ export function Signup({ onAuthed }) {
   function validate() {
     const e = {};
     if (!f.full_name.trim()) e.full_name = t('required');
-    if (!PHONE_RX.test(f.phone.replace(/[\s-]/g, ''))) e.phone = t('invalidPhone');
+    if (!PHONE_RX.test(latinDigits(f.phone).replace(/[\s-]/g, ''))) e.phone = t('invalidPhone');
     if (!EMAIL_RX.test(f.email.trim())) e.email = t('invalidEmail');
     if (f.user_type === 'student' && !f.university.trim()) e.university = t('required');
     if (f.password.length < 8) e.password = t('shortPassword');
@@ -126,7 +126,7 @@ export function Signup({ onAuthed }) {
     if (!validate()) return;
     setBusy(true);
     try {
-      const res = await api.signUp({ ...f, email: f.email.trim().toLowerCase(), phone: f.phone.replace(/[\s-]/g, '') }, appUrl());
+      const res = await api.signUp({ ...f, email: f.email.trim().toLowerCase(), phone: latinDigits(f.phone).replace(/[\s-]/g, '') }, appUrl());
       if (res.session) onAuthed(); else go('/check-email');
     } catch (err) {
       setServerError(err.message);

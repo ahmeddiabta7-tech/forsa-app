@@ -40,33 +40,43 @@ export function money(n, lang) {
   const v = Math.round(Number(n) || 0);
   return lang === 'ar' ? `${v.toLocaleString('ar-EG')} ج.م` : `EGP ${v.toLocaleString('en-US')}`;
 }
+// Arabic-Indic / Persian digits → 0-9 (people often type phone numbers with an Arabic keyboard).
+export const latinDigits = (v) => String(v || '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
 export function num(n, lang) { return lang === 'ar' ? Number(n).toLocaleString('ar-EG') : Number(n).toLocaleString('en-US'); }
 export function date(d, lang) {
   return new Date(d).toLocaleDateString(lang === 'ar' ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 export const pname = (p, lang) => (p ? (lang === 'ar' ? p.name_ar || p.name_en : p.name_en) : '');
 export function imgSrc(url) { return url || ''; }
-export const orderProfit = (o) => (o.unit_price - o.wholesale_price) * o.quantity;
+// Money per order (same as the database): profit before the fee, Forsa fee (% of that profit, ready products only), and what the seller keeps.
+export const orderGross = (o) => (o.unit_price - o.wholesale_price) * (Number(o.quantity) || 1);
+export const orderFee = (o) => Math.round(Math.max(0, orderGross(o)) * (Number(o.fee_pct) || 0) / 100);
+export const orderProfit = (o) => orderGross(o) - orderFee(o);
+// Fee for a product the seller hasn't ordered yet (profit calculator, catalog).
+export const feeFor = (product, gross) => (product?.owner_id ? 0 : Math.round(Math.max(0, gross) * PLAN.feePct / 100));
 
 // ---------- Plan logic ----------
-// "3 orders" rule (same as the database): a seller is locked until they have 3 ready-product orders on hold.
-// Reaching 3 (or an approved EGP 100 payment) releases them and unlocks 30 days, during which every order moves right away.
-// A seller's own custom products are never on hold.
+// 3-pieces rule (same as the database): orders always move right away, but while a seller is locked the profit of
+// ready-product orders delivered in that time stays locked. 3 delivered pieces (orders to the seller's own phone number
+// don't count) release all locked profit and unlock 30 days. Own custom products are never locked.
 export const deliveredAt = (o) => new Date(o.delivered_at || o.updated_at || o.created_at).getTime();
+const isLocked = (o) => o.status === 'delivered' && o.profit_locked;
 
 export function planState(profile, orders) {
   const nowMs = Date.now();
   const until = profile.unlocked_until ? new Date(profile.unlocked_until).getTime() : 0;
   const unlocked = until > nowMs;
   // Counts pieces (quantity), not orders: one order of 3 pieces reaches the goal.
-  const held = orders.filter((o) => o.status === 'on_hold').reduce((s, o) => s + (Number(o.quantity) || 1), 0);
+  const counted = orders.filter((o) => isLocked(o) && !o.own_order).reduce((s, o) => s + (Number(o.quantity) || 1), 0);
+  const lockedProfit = orders.filter(isLocked).reduce((s, o) => s + orderProfit(o), 0);
+  const done = unlocked ? PLAN.goalOrders : Math.min(counted, PLAN.goalOrders);
   return {
-    canSell: true,
     phase: unlocked ? 'open' : 'locked',
     unlocked,
-    held: Math.min(held, PLAN.goalOrders),
-    need: Math.max(0, PLAN.goalOrders - held),
-    delivered: Math.min(held, PLAN.goalOrders), // kept for older callers (tips)
+    held: done, // pieces counted toward the goal
+    need: Math.max(0, PLAN.goalOrders - done),
+    delivered: done, // kept for older callers (tips)
+    lockedProfit,
     goalDone: unlocked,
     daysLeft: unlocked ? Math.max(0, Math.ceil((until - nowMs) / 864e5)) : 0,
     unlockedUntil: profile.unlocked_until,
@@ -74,10 +84,12 @@ export function planState(profile, orders) {
 }
 
 export function earningsSummary(orders, payouts) {
-  const earned = orders.filter((o) => o.status === 'delivered').reduce((s, o) => s + orderProfit(o), 0);
+  const earned = orders.filter((o) => o.status === 'delivered' && !o.profit_locked).reduce((s, o) => s + orderProfit(o), 0);
+  const locked = orders.filter(isLocked).reduce((s, o) => s + orderProfit(o), 0);
+  const fees = orders.filter((o) => o.status === 'delivered').reduce((s, o) => s + orderFee(o), 0);
   const onTheWay = orders.filter((o) => ['confirmed', 'shipped'].includes(o.status)).reduce((s, o) => s + orderProfit(o), 0);
   const paidOut = payouts.reduce((s, p) => s + p.amount, 0);
-  return { earned, onTheWay, paidOut, balance: Math.max(0, earned - paidOut) };
+  return { earned, locked, fees, onTheWay, paidOut, balance: Math.max(0, earned - paidOut) };
 }
 
 // ---------- UI components ----------
@@ -184,6 +196,8 @@ const PATHS = {
   send: 'M4 12l16-8-6 16-2.5-6.5z',
   edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   factory: 'M3 21V10l5 3V10l5 3V10l5 3V4h3v17zM7 17h2M12 17h2M17 17h2',
+  lock: 'M6 11h12v10H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
+  bank: 'M3 10h18L12 4zM5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18',
 };
 export function Icon({ name, size = 20 }) {
   return (

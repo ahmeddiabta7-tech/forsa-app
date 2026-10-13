@@ -5,6 +5,10 @@
 
 const DAY = 864e5;
 const qtyOf = (o) => Number(o.quantity) || 1;
+// Same as orderFee in core.jsx: Forsa fee = % of the profit (ready products only, stored on each order).
+const grossOf = (o) => (o.unit_price - o.wholesale_price) * qtyOf(o);
+const feeOf = (o) => Math.round(Math.max(0, grossOf(o)) * (Number(o.fee_pct) || 0) / 100);
+const netOf = (o) => grossOf(o) - feeOf(o);
 
 export function periodStart(period) {
   const d = new Date(); d.setHours(0, 0, 0, 0);
@@ -25,7 +29,7 @@ export function expensesIn(expenses = [], period) {
 }
 const dayOf = (x) => new Date(`${x.spent_on}T12:00:00`).getTime();
 
-// Core numbers. Revenue / product cost / profit count delivered orders only (money actually made).
+// Core numbers. Revenue / product cost / Forsa fee / profit count delivered orders only (money actually made).
 // "other" = the seller's own costs; "net" = profit − other.
 export function computeStats(orders, expenses = []) {
   const delivered = orders.filter((o) => o.status === 'delivered');
@@ -34,27 +38,27 @@ export function computeStats(orders, expenses = []) {
   const revenue = delivered.reduce((s, o) => s + o.unit_price * qtyOf(o), 0);
   const costs = delivered.reduce((s, o) => s + o.wholesale_price * qtyOf(o), 0);
   const units = delivered.reduce((s, o) => s + qtyOf(o), 0);
+  const fees = delivered.reduce((s, o) => s + feeOf(o), 0);
   const closed = delivered.length + returned.length;
   const other = expenses.reduce((a, x) => a + Number(x.amount || 0), 0);
   return {
-    other, net: revenue - costs - other,
+    other, fees, net: revenue - costs - fees - other,
     orders: live.length,
     delivered: delivered.length,
     returned: returned.length,
     pending: orders.filter((o) => o.status === 'pending').length,
-    onHold: orders.filter((o) => o.status === 'on_hold').length,
     cancelled: orders.filter((o) => o.status === 'cancelled').length,
     onTheWay: orders.filter((o) => ['confirmed', 'shipped'].includes(o.status)).length,
-    revenue, costs, profit: revenue - costs, units,
+    revenue, costs, profit: revenue - costs - fees, units,
     returnRate: closed ? returned.length / closed : 0,
-    avgProfit: delivered.length ? (revenue - costs) / delivered.length : 0,
+    avgProfit: delivered.length ? (revenue - costs - fees) / delivered.length : 0,
   };
 }
 
 // Profit per bucket for the bar chart (delivered orders). Week = 7 days, month = 30 days, all = 12 months.
 export function profitSeries(orders, period, expenses = []) {
   const delivered = orders.filter((o) => o.status === 'delivered');
-  const profit = (o) => (o.unit_price - o.wholesale_price) * qtyOf(o);
+  const profit = netOf;
   const spent = (a, b) => expenses.filter((x) => { const t = dayOf(x); return t >= a.getTime() && t < b.getTime(); }).reduce((s, x) => s + Number(x.amount || 0), 0);
   const when = (o) => new Date(o.delivered_at || o.updated_at || o.created_at);
   if (period === 'all') {
@@ -81,7 +85,7 @@ export function bestSellers(orders, limit = 5) {
   orders.filter((o) => o.status !== 'cancelled').forEach((o) => {
     const cur = map.get(o.product_id) || { product_id: o.product_id, product: o.products, units: 0, profit: 0, returned: 0 };
     cur.units += qtyOf(o);
-    if (o.status === 'delivered') cur.profit += (o.unit_price - o.wholesale_price) * qtyOf(o);
+    if (o.status === 'delivered') cur.profit += netOf(o);
     if (o.status === 'returned') cur.returned += 1;
     map.set(o.product_id, cur);
   });

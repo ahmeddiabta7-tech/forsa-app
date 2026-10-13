@@ -39,7 +39,7 @@ export function Analytics({ data, reload, notify, embedded, businessId }) {
   }, [data.orders, data.expenses, products.data, businessId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statusRows = [
-    ['delivered', s.delivered], ['onTheWay', s.onTheWay], ['pending', s.pending], ['on_hold', s.onHold], ['returned', s.returned], ['cancelled', s.cancelled],
+    ['delivered', s.delivered], ['onTheWay', s.onTheWay], ['pending', s.pending], ['returned', s.returned], ['cancelled', s.cancelled],
   ];
   const statusTotal = statusRows.reduce((a, [, n]) => a + n, 0);
   return (
@@ -52,16 +52,16 @@ export function Analytics({ data, reload, notify, embedded, businessId }) {
       <div className="ink-card">
         <span className="eyebrow">{t('netProfit')}</span>
         <b className="big">{money(s.net, lang)}</b>
-        <small>{t('revenue')} {money(s.revenue, lang)} · {t('costs')} {money(s.costs + s.other, lang)}</small>
+        <small>{t('revenue')} {money(s.revenue, lang)} · {t('costs')} {money(s.costs + s.fees + s.other, lang)}</small>
       </div>
 
       <div className="stats two">
         <div className="stat"><span>{t('revenue')}</span><b>{money(s.revenue, lang)}</b></div>
         <div className="stat"><span>{t('productCost')}</span><b>{money(s.costs, lang)}</b></div>
         <button type="button" className="stat" onClick={() => setEditCost({})}><span>{t('otherCosts')}</span><b>{money(s.other, lang)}</b><span className="note">+ {t('addCost')}</span></button>
+        <div className="stat"><span>{t('forsaFee')}</span><b>{money(s.fees, lang)}</b></div>
         <div className="stat"><span>{t('unitsSold')}</span><b>{num(s.units, lang)}</b></div>
         <div className="stat"><span>{t('returnRate')}</span><b>{num(Math.round(s.returnRate * 100), lang)}{lang === 'ar' ? '٪' : '%'}</b></div>
-        <div className="stat"><span>{t('ordersCount')}</span><b>{num(s.orders, lang)}</b></div>
       </div>
 
       <div className="card">
@@ -71,7 +71,7 @@ export function Analytics({ data, reload, notify, embedded, businessId }) {
 
       <div className="card">
         <h3>{t('revenueVsCost')}</h3>
-        <CompareBars rows={[[t('revenue'), s.revenue], [t('productCost'), s.costs, true], [t('otherCosts'), s.other, true], [t('netProfit'), s.net]]} lang={lang} />
+        <CompareBars rows={[[t('revenue'), s.revenue], [t('productCost'), s.costs, true], [t('forsaFee'), s.fees, true], [t('otherCosts'), s.other, true], [t('netProfit'), s.net]]} lang={lang} />
       </div>
 
       <div className="card">

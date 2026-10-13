@@ -1,6 +1,6 @@
 // My Business: a seller's businesses, their products and their analytics.
 import React, { useEffect, useState } from 'react';
-import { useApp, Button, Field, Header, Spinner, useLoad, Sheet, Icon, go, money, pname, imgSrc } from '../core.jsx';
+import { useApp, Button, Field, Header, Spinner, useLoad, Sheet, Icon, go, money, pname, imgSrc, feeFor } from '../core.jsx';
 import { GOVERNORATES } from '../lib/i18n.js';
 import { Analytics } from './Grow.jsx';
 import { ThreadList } from './Make.jsx';
@@ -81,7 +81,7 @@ export function MyBusiness({ id, data, reload, notify, unread = {} }) {
             <div key={p.id} className="order-row static">
               <img src={imgSrc(p.image_url)} alt="" />
               <button type="button" className="or-main link-reset" onClick={() => go(`/product/${p.id}`)}>
-                <b>{pname(p, lang)}</b><span className="earn small">+{money(p.suggested_price - p.wholesale_price, lang)}</span>
+                <b>{pname(p, lang)}</b><span className="earn small">+{money((p.suggested_price - p.wholesale_price) - feeFor(p, p.suggested_price - p.wholesale_price), lang)}</span>
               </button>
               <button type="button" className="btn btn-ghost small" onClick={() => remove(p)}>{t('removeProduct')}</button>
             </div>

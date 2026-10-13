@@ -2,6 +2,25 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.7 — Oct 2026
+- **3-pieces rule now holds the profit, not the orders.** Every order goes to Forsa right away (no more "On hold").
+  While a seller is locked, the profit of ready-product orders delivered in that time stays locked. When 3 pieces are
+  delivered, all locked profit is released and the seller is unlocked for 30 days (profit paid normally). After 30 days:
+  locked again, count from 0. Locked profit never expires. Orders to the seller's own phone number (or payout wallet)
+  don't count toward 3, but their profit is released with the rest. Own custom products are never locked.
+  Enforced in the database (`prepare_order`, `guard_order_update`, `check_unlock`, `release_profit`); old on-hold orders moved to pending.
+- **EGP 100 option removed** (Plan page is now rules only; Admin → Payments tab removed; sellers can't submit payments).
+- **R4 Payout details** in My Account (InstaPay / Vodafone Cash / bank). Only the seller and admin see them; shown in
+  Admin → Sellers and in the payout form. The seller's phone can only be changed by the Forsa team once saved.
+- **R5 Market price** on products. Admin sets the minimum price; if empty → 90% of market price; suggested = market price.
+- **R6 Forsa fee: 10% of the seller's profit** on ready-product orders, stored on each order (`fee_pct`) and shown on the
+  product page, order details, Earnings, Analytics and Admin. Balances use profit after the fee. Setting: `PLAN.feePct`
+  in `src/config.js` + `public.forsa_fee_pct()` in the database (change both).
+- **R7 Forsa % per Make-your-own deal:** admin enters factory price/piece + Forsa % (no default); seller sees only the
+  total. Split stored in admin-only table `custom_request_costs`.
+- Phone fields accept Arabic digits (٠١٠…).
+- Database update: `supabase/v1_7.sql`.
+
 ## Version 1.6 — Oct 2026
 - The unlock rule counts pieces (order quantity), not orders: one order of 3 pieces releases everything. `supabase/v1_6.sql`.
 

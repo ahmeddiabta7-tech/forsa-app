@@ -1,11 +1,14 @@
 # Change requests from Advisor mode
 
 Agreed with Ahmed in Advisor mode on 12 Oct 2026 (full reasoning: "Forsa_Business_Decisions.docx").
-**Status: waiting.** App mode builds these only when Ahmed says to apply them.
+**Status (13 Oct 2026):** R4, R5, R6, R7 and a new version of the 3-pieces rule are BUILT in version 1.7 (see PROGRESS.md).
+The EGP 100 option was removed. Part 2 (free AI advisor in My Business) is next.
 
 ## ⚠️ Open problems to solve (on hold — do not build)
 1. **Preventing personal purchases** (sellers buying products for themselves through Forsa, competing with real sellers).
-   On hold since 12 Oct 2026 until a suitable solution is found. R1, R2 and R3 below are the ideas discussed so far
+   Partly handled in v1.7 (13 Oct 2026): profit is held until 3 delivered pieces, and orders to the seller's own number
+   never count toward 3 (their profit is still paid once unlocked). Still open: a seller can use a friend's number.
+   On hold since 12 Oct 2026 until a fuller solution is found. R1, R2 and R3 below are the ideas discussed so far
    (approval gate, hold the money, self-orders at full price, own-number check) — **none are approved for building yet.**
    When Ahmed asks "what problems do we have to solve?", mention this one first.
 Everything else in the app stays as it is (no new tabs, Make your own unchanged).

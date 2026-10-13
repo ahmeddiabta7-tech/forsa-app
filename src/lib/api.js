@@ -1,6 +1,7 @@
 // All data access for the app. Uses Supabase when configured, otherwise a local demo store.
 import { isConfigured, db, storage, auth, getSession } from './supa.js';
 import { DEMO_PRODUCTS, DEMO_MANUFACTURERS } from './demo.js';
+import { PLAN } from '../config.js';
 
 const live = isConfigured();
 
@@ -19,7 +20,8 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
-  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests'].forEach((k) => { if (!d[k]) d[k] = []; });
+  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs'].forEach((k) => { if (!d[k]) d[k] = []; });
+  d.orders.forEach((o) => { if (o.status === 'on_hold') o.status = 'pending'; }); // old demo data
   if (!d.manufacturers) d.manufacturers = DEMO_MANUFACTURERS.map((m, i) => ({ ...m, id: `m${i + 1}`, active: true, created_at: new Date().toISOString() }));
   return d;
 }
@@ -80,7 +82,22 @@ export async function getProfile() {
 
 export async function updateProfile(id, patch) {
   if (live) return db.update('profiles', `id=eq.${id}`, patch);
-  Object.assign(meProfile(), patch); demoSave(); return getProfile();
+  const me = meProfile();
+  const p = { ...patch };
+  if (me.role !== 'admin' && me.phone) delete p.phone; // like the database: only the Forsa team changes a saved phone
+  Object.assign(me, p); demoSave(); return getProfile();
+}
+
+// Payout details (R4): how the seller receives money. Only the seller and the Forsa team can see them.
+export async function savePayoutDetails(id, f) {
+  const row = { payout_method: f.payout_method || null, payout_holder: (f.payout_holder || '').trim().slice(0, 100),
+    payout_bank: f.payout_method === 'bank' ? (f.payout_bank || '').trim().slice(0, 100) : '', payout_account: (f.payout_account || '').trim().slice(0, 60) };
+  return updateProfile(id, row);
+}
+
+// Last 10 digits of a phone (Arabic digits allowed), same as public.norm_phone in the database.
+export function normPhone(p) {
+  return String(p || '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/\D/g, '').slice(-10);
 }
 
 // ---------- Products ----------
@@ -89,14 +106,26 @@ export async function listProducts({ all = false } = {}) {
   return demo.products.filter((p) => all || (p.active && (!p.owner_id || p.owner_id === meId())));
 }
 
+// R5: the admin sets the minimum price; if it's empty, it is 90% of the market price (same rule in the database).
+export function priceDefaults(p) {
+  const market = p.market_price === '' || p.market_price == null ? null : Math.round(Number(p.market_price));
+  let min = p.min_price === '' || p.min_price == null ? null : Math.round(Number(p.min_price));
+  if (min == null && market) min = Math.ceil(market * PLAN.marketMinPct / 100);
+  let sug = p.suggested_price === '' || p.suggested_price == null ? null : Math.round(Number(p.suggested_price));
+  if (sug == null && min != null) sug = Math.max(market || min, min);
+  return { market_price: market, min_price: min, suggested_price: sug };
+}
+
 export async function saveProduct(p) {
-  const row = { ...p };
-  ['wholesale_price', 'min_price', 'suggested_price', 'ship_days', 'stock'].forEach((k) => { row[k] = Number(row[k]); });
+  const row = { ...p, ...priceDefaults(p) };
+  ['wholesale_price', 'ship_days', 'stock'].forEach((k) => { row[k] = Number(row[k]); });
   row.quality_score = Number(row.quality_score);
   if (live) {
     const { id, created_at, ...data } = row;
     return id ? db.update('products', `id=eq.${id}`, data) : db.insert('products', data);
   }
+  if (row.min_price == null) throw new Error('Enter a minimum price or a market price');
+  if (row.min_price < row.wholesale_price) throw new Error(`Minimum price (EGP ${row.min_price}) is below the wholesale price (EGP ${row.wholesale_price})`);
   if (row.id) { Object.assign(demo.products.find((x) => x.id === row.id), row); demoSave(); return row; }
   const x = { ...row, id: uid(), created_at: now() }; demo.products.unshift(x); demoSave(); return x;
 }
@@ -151,37 +180,25 @@ export async function createOrder(o) {
   const biz = demo.businesses.find((b) => b.id === o.business_id && b.owner_id === meId());
   if (!biz || !demo.business_products.some((bp) => bp.business_id === biz.id && bp.product_id === o.product_id)) throw new Error('Add this product to your business first');
   const me = meProfile();
-  const unlocked = me.unlocked_until && Date.parse(me.unlocked_until) > Date.now();
-  const status = p.owner_id || unlocked ? 'pending' : 'on_hold';
-  const row = { ...o, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status, created_at: now(), updated_at: now() };
+  const c = normPhone(o.customer_phone);
+  const own = c.length === 10 && (c === normPhone(me.phone) || (['vodafone_cash', 'instapay'].includes(me.payout_method) && c === normPhone(me.payout_account)));
+  const row = { ...o, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status: 'pending',
+    fee_pct: p.owner_id ? 0 : PLAN.feePct, own_order: own, profit_locked: false, profit_released_at: null, created_at: now(), updated_at: now() };
   demo.orders.push(row);
-  const returned = { ...row }; // like the database: the saved row, before any release
-  if (status === 'on_hold' && demo.orders.filter((x) => x.seller_id === meId() && x.status === 'on_hold').reduce((s, x) => s + (Number(x.quantity) || 1), 0) >= 3) demoRelease(me);
-  demoSave(); return returned;
+  demoSave(); return { ...row };
 }
 
 export async function cancelOrder(id) {
   if (live) return db.update('orders', `id=eq.${id}`, { status: 'cancelled' });
   const o = demo.orders.find((x) => x.id === id);
-  if (!['pending', 'on_hold'].includes(o.status)) throw new Error('Only pending orders can be cancelled');
+  if (o.status !== 'pending') throw new Error('Only pending orders can be cancelled');
   o.status = 'cancelled'; o.updated_at = now(); demoSave(); return o;
 }
 
-// ---------- Payouts & subscription ----------
+// ---------- Payouts ----------
 export async function myPayouts() {
   if (live) return db.select('payouts', `select=*&seller_id=eq.${getSession()?.user?.id}&order=paid_at.desc`);
   return demo.payouts.filter((p) => p.seller_id === meId()).sort((a, b) => b.paid_at.localeCompare(a.paid_at));
-}
-
-export async function myPayments() {
-  if (live) return db.select('subscription_payments', `select=*&seller_id=eq.${getSession()?.user?.id}&order=created_at.desc`);
-  return demo.subscription_payments.filter((p) => p.seller_id === meId()).sort(byNewest);
-}
-
-export async function submitPayment(p) {
-  if (live) return db.insert('subscription_payments', { ...p, seller_id: getSession()?.user?.id });
-  const row = { ...p, id: uid(), seller_id: meId(), status: 'pending', created_at: now() };
-  demo.subscription_payments.push(row); demoSave(); return row;
 }
 
 // ---------- Ideas ----------
@@ -242,32 +259,29 @@ export async function adminOrders() {
 export async function setOrderStatus(id, status) {
   if (live) return db.update('orders', `id=eq.${id}`, { status });
   const o = demo.orders.find((x) => x.id === id);
-  if (status === 'delivered' && o.status !== 'delivered') o.delivered_at = now();
-  o.status = status; o.updated_at = now(); demoSave(); return o;
-}
-
-export async function adminPayments() {
-  if (live) return db.select('subscription_payments', 'select=*,profiles(full_name,phone,email)&order=created_at.desc&limit=300');
-  return demo.subscription_payments.map((s) => ({ ...s, profiles: pick(demo.profiles.find((p) => p.id === s.seller_id)) })).sort(byNewest);
-}
-
-export async function reviewPayment(id, status) {
-  if (live) return db.update('subscription_payments', `id=eq.${id}`, { status });
-  const s = demo.subscription_payments.find((x) => x.id === id);
-  if (status === 'approved' && s.status !== 'approved') {
-    const p = demo.profiles.find((x) => x.id === s.seller_id);
-    const from = Math.max(Date.now(), p.unlocked_until ? Date.parse(p.unlocked_until) : 0);
-    p.unlocked_until = p.paid_until = new Date(from + s.months * 30 * 864e5).toISOString(); p.goal_waived = true;
-    demo.orders.filter((x) => x.seller_id === p.id && x.status === 'on_hold').forEach((x) => { x.status = 'pending'; });
+  const wasDelivered = o.status === 'delivered';
+  if (status === 'delivered' && !wasDelivered) {
+    // Same as the database: profit of a ready product delivered while the seller is locked stays locked.
+    const seller = demo.profiles.find((x) => x.id === o.seller_id);
+    const product = demo.products.find((x) => x.id === o.product_id) || {};
+    const unlocked = seller?.unlocked_until && Date.parse(seller.unlocked_until) > Date.now();
+    o.delivered_at = now();
+    o.profit_locked = !product.owner_id && !unlocked;
+    o.profit_released_at = o.profit_locked ? null : now();
   }
-  s.status = status; s.reviewed_at = now(); demoSave(); return s;
+  o.status = status; o.updated_at = now();
+  if (status === 'delivered' && !wasDelivered && o.profit_locked) {
+    const counted = demo.orders.filter((x) => x.seller_id === o.seller_id && x.status === 'delivered' && x.profit_locked && !x.own_order).reduce((s, x) => s + (Number(x.quantity) || 1), 0);
+    if (counted >= PLAN.goalOrders) demoRelease(demo.profiles.find((x) => x.id === o.seller_id));
+  }
+  demoSave(); return o;
 }
 
 export async function adminSellers() {
   if (live) {
     const [profiles, orders, payouts] = await Promise.all([
       db.select('profiles', 'select=*&order=created_at.desc&limit=1000'),
-      db.select('orders', 'select=seller_id,status,unit_price,wholesale_price,quantity,delivered_at,updated_at,created_at,products(owner_id)&limit=5000'),
+      db.select('orders', 'select=seller_id,status,unit_price,wholesale_price,quantity,fee_pct,own_order,profit_locked,delivered_at,updated_at,created_at,products(owner_id)&limit=5000'),
       db.select('payouts', 'select=seller_id,amount&limit=5000'),
     ]);
     return { profiles, orders, payouts };
@@ -499,8 +513,16 @@ export const submitDepositRef = (id, ref) => patchCustom(id, { deposit_ref: ref.
 export const submitBalanceRef = (id, ref) => patchCustom(id, { balance_ref: ref.trim().slice(0, 80) });
 
 export async function adminCustomRequests() {
-  if (live) return db.select('custom_requests', `${CR_SELECT},seller:profiles!custom_requests_seller_id_fkey(full_name,phone,email)&order=created_at.desc&limit=300`);
-  return demo.custom_requests.map((c) => ({ ...demoCR(c), seller: pick(demo.profiles.find((p) => p.id === c.seller_id)) })).sort(byNewest);
+  if (live) return db.select('custom_requests', `${CR_SELECT},seller:profiles!custom_requests_seller_id_fkey(full_name,phone,email),custom_request_costs(factory_unit_price,forsa_pct)&order=created_at.desc&limit=300`);
+  return demo.custom_requests.map((c) => ({ ...demoCR(c), seller: pick(demo.profiles.find((p) => p.id === c.seller_id)),
+    custom_request_costs: demo.custom_request_costs.find((x) => x.request_id === c.id) || null })).sort(byNewest);
+}
+
+// R7: the factory price and Forsa's % for one deal (admin only; the seller sees just the total price).
+export async function saveDealCost(requestId, factoryUnitPrice, forsaPct) {
+  const row = { request_id: requestId, factory_unit_price: Math.round(Number(factoryUnitPrice)), forsa_pct: Number(forsaPct), updated_at: new Date().toISOString() };
+  if (live) return db.upsert('custom_request_costs', row, 'request_id');
+  demo.custom_request_costs = demo.custom_request_costs.filter((x) => x.request_id !== requestId).concat(row); demoSave(); return row;
 }
 export const adminUpdateCustom = (id, patch) => patchCustom(id, patch);
 
@@ -536,9 +558,9 @@ function withProduct(o) {
   const p = demo.products.find((x) => x.id === o.product_id) || {};
   return { ...o, products: { name_en: p.name_en, name_ar: p.name_ar, image_url: p.image_url, factory_code: p.factory_code, owner_id: p.owner_id || null } };
 }
-function demoRelease(me) {
-  demo.orders.filter((x) => x.seller_id === me.id && x.status === 'on_hold').forEach((x) => { x.status = 'pending'; x.updated_at = now(); });
-  me.unlocked_until = new Date(Date.now() + 30 * 864e5).toISOString();
+function demoRelease(seller) {
+  demo.orders.filter((x) => x.seller_id === seller.id && x.profit_locked).forEach((x) => { x.profit_locked = false; x.profit_released_at = now(); });
+  seller.unlocked_until = new Date(Date.now() + PLAN.unlockDays * 864e5).toISOString();
 }
 function pick(p) { if (!p) return null; const { password, ...r } = p; return r; }
 function byNewest(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); }

@@ -105,15 +105,14 @@ export default function App() {
           : <AgencyHome unread={unread} notify={notify} />;
     } else switch (a) {
       case 'products': screen = <Products data={data} />; break;
-      case 'product': screen = <ProductDetail id={b} data={data} reload={reload} notify={notify} onOrdered={async (o) => {
-        const r = await loadData().catch(() => null);
-        const released = o?.status === 'on_hold' && r?.fresh?.unlocked_until && new Date(r.fresh.unlocked_until) > new Date();
-        notify(L.t(released ? 'ordersReleased' : o?.status === 'on_hold' ? 'orderHeld' : 'orderPlaced')); go('/orders');
+      case 'product': screen = <ProductDetail id={b} data={data} reload={reload} notify={notify} onOrdered={async () => {
+        await loadData().catch(() => null);
+        notify(L.t('orderPlaced')); go('/orders');
       }} />; break;
       case 'orders': screen = <Orders data={data} openId={b} reload={reload} notify={notify} />; break;
       case 'earnings': screen = <Earnings data={data} />; break;
       case 'more': screen = <More onLogout={logout} notify={notify} onProfileSaved={() => api.getProfile().then(setProfile)} />; break;
-      case 'plan': screen = <Plan data={data} notify={notify} />; break;
+      case 'plan': screen = <Plan data={data} />; break;
       case 'idea': case 'ideas': screen = <Ideas notify={notify} />; break;
       case 'analytics': screen = <Analytics data={data} reload={reload} notify={notify} />; break;
       case 'business': screen = <MyBusiness id={b} data={data} reload={reload} notify={notify} unread={unread} />; break;
