@@ -370,3 +370,27 @@ main:not(.with-nav) .composer { bottom: 0; }
 .method-opts button[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .field input[readonly] { background: transparent; color: var(--muted); }
 .ink-card .btn-primary { background: var(--on-ink); color: var(--ink); border-color: var(--on-ink); }
+
+/* v1.8: two-step order form */
+.order-steps { display: flex; gap: 8px; list-style: none; margin: 0 0 4px; padding: 0; }
+.order-steps li { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--muted); border-bottom: 2px solid var(--line); padding-bottom: 8px; }
+.order-steps li span { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: var(--surface-2); color: var(--muted); flex: none; }
+.order-steps li.on { color: var(--text); border-color: var(--ink); }
+.order-steps li.on span, .order-steps li.done span { background: var(--ink); color: var(--on-ink); }
+.review-who { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; background: var(--surface-2); border-radius: var(--r-sm); padding: 12px 14px; }
+.review-who > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.ink-link.dark { color: var(--text); margin-top: 0; }
+.sum-kv:empty { display: none; }
+.sum-kv dd { text-align: end; font-variant-numeric: tabular-nums; }
+.sum-kv .strong { font-weight: 800; color: var(--text); }
+.ship-row { display: grid; grid-template-columns: 1fr 96px auto; gap: 10px; align-items: center; }
+.track ol { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); }
+.track li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--muted); text-align: center; }
+.track li i { width: 14px; height: 14px; border-radius: 50%; background: var(--surface); border: 2px solid var(--line-2); z-index: 1; }
+.track li::before { content: ''; position: absolute; top: 6px; inset-inline-end: 50%; width: 100%; height: 2px; background: var(--line-2); }
+.track li:first-child::before { display: none; }
+.track li.done, .track li.on { color: var(--text); }
+.track li.done i, .track li.on i { background: var(--ink); border-color: var(--ink); }
+.track li.done::before, .track li.on::before { background: var(--ink); }
+.track li.on i { box-shadow: 0 0 0 4px var(--surface-2); }
+.track-end { margin: 0; padding: 10px 12px; border-radius: var(--r-sm); background: var(--surface-2); font-size: 14px; }

@@ -1,10 +1,10 @@
 // Admin panel (English only, for the Forsa team).
 import React, { useMemo, useState } from 'react';
 import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, orderFee, imgSrc, planState, earningsSummary, go } from '../core.jsx';
-import { CATEGORIES } from '../lib/i18n.js';
+import { CATEGORIES, GOVERNORATES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
-const TABS = ['Orders', 'Products', 'Manufacturing', 'Sellers', 'Ideas', 'Services', 'Partners'];
+const TABS = ['Orders', 'Products', 'Shipping', 'Manufacturing', 'Sellers', 'Ideas', 'Services', 'Partners'];
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 const PAY_METHODS = { instapay: 'InstaPay', vodafone_cash: 'Vodafone Cash', bank: 'Bank account' };
 
@@ -18,6 +18,7 @@ export function Admin({ notify }) {
       </div>
       {tab === 'Orders' && <AdminOrders notify={notify} />}
       {tab === 'Products' && <AdminProducts notify={notify} />}
+      {tab === 'Shipping' && <AdminShipping notify={notify} />}
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
       {tab === 'Ideas' && <AdminIdeas notify={notify} />}
       {tab === 'Services' && <AdminServices notify={notify} />}
@@ -49,8 +50,9 @@ function AdminOrders({ notify }) {
             <div key={o.id} className="card admin-order">
               <div className="row-between"><b>#{o.order_no} · {o.products?.name_en} × {o.quantity}</b><span className={`pill pill-${o.status}`}>{o.status}</span></div>
               <p className="small">Customer: <b>{o.customer_name}</b> · <span dir="ltr">{o.customer_phone}</span><br />{o.address}, {o.governorate}{o.notes ? ` · Note: ${o.notes}` : ''}</p>
+              {o.product_options && <p className="small"><b>Product details:</b> {o.product_options}</p>}
               <p className="small muted">Seller: {o.profiles?.full_name} · {o.profiles?.phone} · Factory {o.products?.factory_code} · {date(o.created_at, 'en')}</p>
-              <p className="small">Sell {money(o.unit_price, 'en')} · Wholesale {money(o.wholesale_price, 'en')} · Forsa fee {money(orderFee(o), 'en')}{Number(o.fee_pct) ? ` (${Number(o.fee_pct)}%)` : ''} · Seller keeps <b>{money(orderProfit(o), 'en')}</b>{o.status === 'delivered' && o.profit_locked ? ' (locked)' : ''} · Collect <b>{money(o.unit_price * o.quantity, 'en')}</b></p>
+              <p className="small">Sell {money(o.unit_price, 'en')} · Wholesale {money(o.wholesale_price, 'en')} · Forsa fee {money(orderFee(o), 'en')}{Number(o.fee_pct) ? ` (${Number(o.fee_pct)}%)` : ''} · Seller keeps <b>{money(orderProfit(o), 'en')}</b>{o.status === 'delivered' && o.profit_locked ? ' (locked)' : ''} · Shipping {money(o.shipping_fee || 0, 'en')} · Collect <b>{money(o.unit_price * o.quantity + (o.shipping_fee || 0), 'en')}</b></p>
               {o.own_order && <p className="small"><b>Seller's own number</b> — doesn't count toward 3 pieces.</p>}
               <label className="small" htmlFor={`st-${o.id}`}>Status</label>
               <select id={`st-${o.id}`} value={o.status} onChange={(e) => change(o, e.target.value)}>
@@ -174,6 +176,40 @@ function ProductForm({ product, onClose, onSaved }) {
         </div>
       )}
     </Sheet>
+  );
+}
+
+// Shipping price per governorate: the customer pays it on top of the product price. Switched off = no orders there.
+function AdminShipping({ notify }) {
+  const { loading, data, error, reload } = useLoad(() => api.listShippingRates(), []);
+  const [edits, setEdits] = useState({});
+  if (loading) return <Spinner />;
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
+  const order = GOVERNORATES.map(([g]) => g);
+  const rows = [...data].sort((a, b) => order.indexOf(a.governorate) - order.indexOf(b.governorate));
+  async function save(r, patch) {
+    const next = { ...r, ...patch };
+    if (!(Number(next.fee) >= 0) || Number(next.fee) > 2000) { notify('Enter a price between 0 and 2,000'); return; }
+    try { await api.saveShippingRate(r.governorate, next.fee, next.active); setEdits((e) => ({ ...e, [r.governorate]: undefined })); notify(`${r.governorate} saved`); reload(); }
+    catch (e) { notify(e.message); }
+  }
+  return (
+    <>
+      <p className="small muted">Shipping price the customer pays for each governorate (added to the total to collect). Turn a governorate off to stop orders there.</p>
+      <div className="card stack">
+        {rows.map((r) => {
+          const v = edits[r.governorate] ?? r.fee;
+          return (
+            <div key={r.governorate} className="ship-row">
+              <label htmlFor={`sh-${r.governorate}`} className="small"><b>{r.governorate}</b>{!r.active && <span className="muted"> · off</span>}</label>
+              <input id={`sh-${r.governorate}`} type="number" min="0" value={v} onChange={(e) => setEdits({ ...edits, [r.governorate]: e.target.value })}
+                onBlur={() => { if (String(v) !== String(r.fee)) save(r, { fee: v }); }} aria-label={`${r.governorate} shipping price (EGP)`} />
+              <label className="check small"><input type="checkbox" checked={r.active} onChange={(e) => save(r, { fee: v, active: e.target.checked })} /> On</label>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
 

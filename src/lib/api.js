@@ -2,6 +2,7 @@
 import { isConfigured, db, storage, auth, getSession } from './supa.js';
 import { DEMO_PRODUCTS, DEMO_MANUFACTURERS } from './demo.js';
 import { PLAN } from '../config.js';
+import { GOVERNORATES } from './i18n.js';
 
 const live = isConfigured();
 
@@ -22,6 +23,7 @@ function demoLoad() {
   if (!d.expenses) d.expenses = [];
   ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs'].forEach((k) => { if (!d[k]) d[k] = []; });
   d.orders.forEach((o) => { if (o.status === 'on_hold') o.status = 'pending'; }); // old demo data
+  if (!d.shipping_rates) d.shipping_rates = GOVERNORATES.map(([g]) => ({ governorate: g, fee: 70, active: true }));
   if (!d.manufacturers) d.manufacturers = DEMO_MANUFACTURERS.map((m, i) => ({ ...m, id: `m${i + 1}`, active: true, created_at: new Date().toISOString() }));
   return d;
 }
@@ -179,13 +181,27 @@ export async function createOrder(o) {
   if (o.unit_price < p.min_price) throw new Error(`Selling price must be at least EGP ${p.min_price}`);
   const biz = demo.businesses.find((b) => b.id === o.business_id && b.owner_id === meId());
   if (!biz || !demo.business_products.some((bp) => bp.business_id === biz.id && bp.product_id === o.product_id)) throw new Error('Add this product to your business first');
+  const rate = demo.shipping_rates.find((r) => r.governorate === o.governorate && r.active);
+  if (!rate) throw new Error(`We don't deliver to ${o.governorate} yet`);
   const me = meProfile();
   const c = normPhone(o.customer_phone);
   const own = c.length === 10 && (c === normPhone(me.phone) || (['vodafone_cash', 'instapay'].includes(me.payout_method) && c === normPhone(me.payout_account)));
-  const row = { ...o, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status: 'pending',
+  const row = { ...o, product_options: String(o.product_options || '').trim().slice(0, 200), shipping_fee: rate.fee, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status: 'pending',
     fee_pct: p.owner_id ? 0 : PLAN.feePct, own_order: own, profit_locked: false, profit_released_at: null, created_at: now(), updated_at: now() };
   demo.orders.push(row);
   demoSave(); return { ...row };
+}
+
+// ---------- Shipping prices per governorate ----------
+export async function listShippingRates() {
+  if (live) return db.select('shipping_rates', 'select=*&order=governorate.asc');
+  return demo.shipping_rates;
+}
+
+export async function saveShippingRate(governorate, fee, active) {
+  const row = { governorate, fee: Math.round(Number(fee)), active: Boolean(active), updated_at: new Date().toISOString() };
+  if (live) return db.upsert('shipping_rates', row, 'governorate');
+  Object.assign(demo.shipping_rates.find((r) => r.governorate === governorate), row); demoSave(); return row;
 }
 
 export async function cancelOrder(id) {

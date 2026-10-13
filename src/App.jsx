@@ -105,9 +105,9 @@ export default function App() {
           : <AgencyHome unread={unread} notify={notify} />;
     } else switch (a) {
       case 'products': screen = <Products data={data} />; break;
-      case 'product': screen = <ProductDetail id={b} data={data} reload={reload} notify={notify} onOrdered={async () => {
+      case 'product': screen = <ProductDetail id={b} data={data} reload={reload} notify={notify} onOrdered={async (o) => {
         await loadData().catch(() => null);
-        notify(L.t('orderPlaced')); go('/orders');
+        notify(L.t('orderPlaced')); go(o?.id ? `/orders/${o.id}` : '/orders');
       }} />; break;
       case 'orders': screen = <Orders data={data} openId={b} reload={reload} notify={notify} />; break;
       case 'earnings': screen = <Earnings data={data} />; break;

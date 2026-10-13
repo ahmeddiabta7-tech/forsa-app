@@ -2,6 +2,17 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.8 — Oct 2026
+- **New order form in 2 short steps:** 1) Customer: name, phone, governorate (shows the shipping price), address,
+  product details (size, color or anything the customer chose — optional), notes. 2) Review: customer recap with Edit,
+  price per piece and quantity (editable, never below the minimum), products + shipping = what the customer pays on
+  delivery, profit before fee, Forsa fee, "You keep", and the locked-profit note.
+- **Shipping price per governorate** (Admin → Shipping): the customer pays it on top; every governorate starts at
+  EGP 70 — set the real prices. A governorate switched off can't receive orders. Stored on each order (`shipping_fee`).
+- After placing, the seller lands on the new order with a **step tracker**: Placed → Confirmed → Shipped → Delivered
+  (returned / cancelled shown as a note). Order details and Admin show product details, shipping and the total to collect.
+- Database update: `supabase/v1_8.sql`.
+
 ## Version 1.7 — Oct 2026
 - **3-pieces rule now holds the profit, not the orders.** Every order goes to Forsa right away (no more "On hold").
   While a seller is locked, the profit of ready-product orders delivered in that time stays locked. When 3 pieces are

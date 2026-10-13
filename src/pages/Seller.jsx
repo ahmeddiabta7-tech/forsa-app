@@ -212,67 +212,141 @@ export function ProductDetail({ id, data, reload: reloadData, onOrdered, notify 
         {inBiz.length > 0 && inBiz.length < businesses.length && <Button block variant="ghost" onClick={() => setAdding(true)}><Icon name="store" size={18} /> {t('addToBusiness')}</Button>}
         <Button block variant="ghost" onClick={copy}><Icon name="copy" size={18} /> {t('copyPost')}</Button>
       </div>
-      <OrderSheet open={open} onClose={() => setOpen(false)} product={p} price={sell} qty={qty} businesses={inBiz} onDone={(o) => { setOpen(false); onOrdered(o); }} />
+      <OrderSheet open={open} onClose={() => setOpen(false)} product={p} price={sell} qty={qty} businesses={inBiz} plan={plan} onDone={(o) => { setOpen(false); onOrdered(o); }} />
       <AddToBusiness open={adding} product={p} businesses={businesses} notify={notify} onClose={() => setAdding(false)} onDone={() => { setAdding(false); reloadData?.(); }} />
     </div>
   );
 }
 
-function OrderSheet({ open, onClose, product, price, qty, businesses, onDone }) {
+// Two short steps: 1) customer & address  2) review (price, quantity, shipping, total to collect, profit) and confirm.
+const EMPTY_ORDER = { customer_name: '', customer_phone: '', governorate: 'Cairo', address: '', product_options: '', notes: '' };
+function OrderSheet({ open, onClose, product, price, qty, businesses, plan, onDone }) {
   const { t, lang } = useApp();
+  const [step, setStep] = useState(1);
   const [bizId, setBizId] = useState('');
-  useEffect(() => { if (open) setBizId((cur) => (businesses.some((b) => b.id === cur) ? cur : businesses[0]?.id || '')); }, [open, businesses]);
-  const [f, setF] = useState({ customer_name: '', customer_phone: '', governorate: 'Cairo', address: '', notes: '' });
+  const [f, setF] = useState(EMPTY_ORDER);
+  const [unit, setUnit] = useState(price);
+  const [count, setCount] = useState(qty);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState('');
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  async function submit(ev) {
+  const rates = useLoad(() => api.listShippingRates(), []);
+  useEffect(() => {
+    if (!open) return;
+    setStep(1); setUnit(price); setCount(qty); setServerError(''); setErrors({});
+    setBizId((cur) => (businesses.some((b) => b.id === cur) ? cur : businesses[0]?.id || ''));
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); if (errors[k]) setErrors({ ...errors, [k]: undefined }); };
+  const active = (rates.data || []).filter((r) => r.active);
+  const rate = active.find((r) => r.governorate === f.governorate);
+  const govName = (g) => (lang === 'ar' ? (GOVERNORATES.find((x) => x[0] === g)?.[1] || g) : g);
+  const phone = latinDigits(f.customer_phone).replace(/[\s-]/g, '');
+  const u = Number(unit) || 0;
+  const products = u * count;
+  const shipping = rate ? rate.fee : 0;
+  const gross = (u - product.wholesale_price) * count;
+  const fee = feeFor(product, gross);
+
+  function next(ev) {
     ev.preventDefault();
     const e = {};
     if (!f.customer_name.trim()) e.customer_name = t('required');
-    const phone = latinDigits(f.customer_phone).replace(/[\s-]/g, '');
     if (!/^(\+?20)?0?1[0125]\d{8}$/.test(phone)) e.customer_phone = t('invalidPhone');
+    if (!rate) e.governorate = t('noDelivery');
     if (!f.address.trim()) e.address = t('required');
-    if (price < product.min_price) e.price = t('priceTooLow', { p: money(product.min_price, lang) });
     if (!bizId) e.business = t('businessRequired');
     setErrors(e);
-    if (Object.keys(e).length) return;
+    if (!Object.keys(e).length) setStep(2);
+  }
+  async function place() {
+    if (u < product.min_price) { setErrors({ price: t('priceTooLow', { p: money(product.min_price, lang) }) }); return; }
     setBusy(true); setServerError('');
     try {
-      const o = await api.createOrder({ ...f, customer_phone: phone, product_id: product.id, business_id: bizId, unit_price: price, quantity: qty });
-      setF({ customer_name: '', customer_phone: '', governorate: 'Cairo', address: '', notes: '' });
+      const o = await api.createOrder({ ...f, customer_phone: phone, product_options: f.product_options.trim(), product_id: product.id, business_id: bizId, unit_price: Math.round(u), quantity: count });
+      setF(EMPTY_ORDER);
       onDone(o);
     } catch (err) { setServerError(err.message); }
     finally { setBusy(false); }
   }
   return (
     <Sheet open={open} onClose={onClose} title={t('createOrder')}>
-      <div className="order-summary"><span>{pname(product, lang)} × {num(qty, lang)}</span><b>{money(price * qty, lang)}</b></div>
-      <form onSubmit={submit} noValidate className="stack">
-        {businesses.length > 1 && (
-          <Field id="os-biz" label={t('orderFor')} error={errors.business}>
-            <select id="os-biz" value={bizId} onChange={(e) => setBizId(e.target.value)}>{businesses.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+      <ol className="order-steps" aria-label={t('createOrder')}>
+        <li className={step === 1 ? 'on' : 'done'}><span>1</span>{t('stepCustomer')}</li>
+        <li className={step === 2 ? 'on' : ''}><span>2</span>{t('stepReview')}</li>
+      </ol>
+      {step === 1 ? (
+        <form onSubmit={next} noValidate className="stack">
+          <div className="order-summary"><span>{pname(product, lang)} × {num(count, lang)}</span><b>{money(products, lang)}</b></div>
+          {businesses.length > 1 && (
+            <Field id="os-biz" label={t('orderFor')} error={errors.business}>
+              <select id="os-biz" value={bizId} onChange={(e) => setBizId(e.target.value)}>{businesses.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+            </Field>
+          )}
+          <Field id="os-name" label={t('customerName')} error={errors.customer_name}><input id="os-name" value={f.customer_name} onChange={set('customer_name')} autoComplete="off" /></Field>
+          <Field id="os-phone" label={t('customerPhone')} error={errors.customer_phone}><input id="os-phone" value={f.customer_phone} onChange={set('customer_phone')} inputMode="tel" dir="ltr" placeholder="01012345678" /></Field>
+          <Field id="os-gov" label={t('city')} error={errors.governorate} hint={rate ? t('shippingTo', { a: money(rate.fee, lang) }) : undefined}>
+            <select id="os-gov" value={f.governorate} onChange={set('governorate')}>
+              {GOVERNORATES.filter(([en]) => active.some((r) => r.governorate === en)).map(([en, ar]) => <option key={en} value={en}>{lang === 'ar' ? ar : en}</option>)}
+            </select>
           </Field>
-        )}
-        <h3>{t('customer')}</h3>
-        <Field id="os-name" label={t('customerName')} error={errors.customer_name}><input id="os-name" value={f.customer_name} onChange={set('customer_name')} /></Field>
-        <Field id="os-phone" label={t('customerPhone')} error={errors.customer_phone}><input id="os-phone" value={f.customer_phone} onChange={set('customer_phone')} inputMode="tel" dir="ltr" placeholder="01012345678" /></Field>
-        <Field id="os-gov" label={t('city')}>
-          <select id="os-gov" value={f.governorate} onChange={set('governorate')}>{GOVERNORATES.map(([en, ar]) => <option key={en} value={en}>{lang === 'ar' ? ar : en}</option>)}</select>
-        </Field>
-        <Field id="os-addr" label={t('address')} error={errors.address}><textarea id="os-addr" rows="2" value={f.address} onChange={set('address')} /></Field>
-        <Field id="os-notes" label={t('notes')}><input id="os-notes" value={f.notes} onChange={set('notes')} /></Field>
-        {errors.price && <p className="form-error">{errors.price}</p>}
-        {serverError && <p className="form-error" role="alert">{serverError}</p>}
-        <div className="profit-box"><span>{t('youKeep')}</span><b>{money((price - product.wholesale_price) * qty - feeFor(product, (price - product.wholesale_price) * qty), lang)}</b></div>
-        <button type="submit" className="btn btn-primary block" disabled={busy}>{busy ? t('loading') : t('placeOrder')}</button>
-      </form>
+          <Field id="os-addr" label={t('address')} error={errors.address}><textarea id="os-addr" rows="2" value={f.address} onChange={set('address')} placeholder={t('addressHint')} /></Field>
+          <Field id="os-opts" label={t('productOptions')} hint={t('productOptionsHint')}><input id="os-opts" value={f.product_options} onChange={set('product_options')} maxLength={200} /></Field>
+          <Field id="os-notes" label={t('notes')}><input id="os-notes" value={f.notes} onChange={set('notes')} placeholder={t('notesHint')} /></Field>
+          <button type="submit" className="btn btn-primary block">{t('nextReview')}</button>
+        </form>
+      ) : (
+        <div className="stack">
+          <div className="review-who">
+            <div><b>{f.customer_name}</b><span className="muted small" dir="ltr">{phone}</span><span className="muted small">{govName(f.governorate)} · {f.address}</span>{f.product_options.trim() && <span className="small">{t('productOptions')}: {f.product_options}</span>}</div>
+            <button type="button" className="ink-link dark" onClick={() => setStep(1)}>{t('edit')}</button>
+          </div>
+          <div className="two-col">
+            <Field id="os-price" label={t('pricePerPiece')} error={errors.price} hint={t('minIs', { p: money(product.min_price, lang) })}>
+              <input id="os-price" type="number" inputMode="numeric" min={product.min_price} value={unit} onChange={(e) => { setUnit(e.target.value); setErrors({}); }} />
+            </Field>
+            <Field id="os-qty" label={t('quantity')}>
+              <div className="stepper">
+                <button type="button" onClick={() => setCount(Math.max(1, count - 1))} aria-label="−">−</button>
+                <output id="os-qty">{num(count, lang)}</output>
+                <button type="button" onClick={() => setCount(Math.min(20, count + 1))} aria-label="+">+</button>
+              </div>
+            </Field>
+          </div>
+          <dl className="kv sum-kv">
+            <dt>{t('productsTotal')}</dt><dd>{money(products, lang)}</dd>
+            <dt>{t('shippingFee')} ({govName(f.governorate)})</dt><dd>{money(shipping, lang)}</dd>
+            <dt className="strong">{t('collectTotal')}</dt><dd className="strong">{money(products + shipping, lang)}</dd>
+          </dl>
+          <dl className="kv sum-kv">
+            {fee > 0 && <><dt>{t('profitBeforeFee')}</dt><dd>{money(gross, lang)}</dd><dt>{t('forsaFeeLine', { p: num(PLAN.feePct, lang) })}</dt><dd>−{money(fee, lang)}</dd></>}
+          </dl>
+          <div className="profit-box"><span>{t('youKeep')}</span><b>{money(gross - fee, lang)}</b></div>
+          {!product.owner_id && plan && !plan.unlocked && <p className="small muted"><Icon name="lock" size={13} /> {t('holdNotice', { h: num(plan.held, lang) })}</p>}
+          {serverError && <p className="form-error" role="alert">{serverError}</p>}
+          <button type="button" className="btn btn-primary block" disabled={busy} onClick={place}>{busy ? t('loading') : `${t('placeOrder')} · ${money(products + shipping, lang)}`}</button>
+        </div>
+      )}
     </Sheet>
   );
 }
 
 // ---------- Orders ----------
+// Where the order is now: Placed → Confirmed → Shipped → Delivered (returned / cancelled shown as an end note).
+const TRACK = ['pending', 'confirmed', 'shipped', 'delivered'];
+function OrderTracker({ o }) {
+  const { t } = useApp();
+  const at = TRACK.indexOf(o.status);
+  if (at < 0) return <p className={`track-end track-${o.status}`}>{t(`track_${o.status}`)}</p>;
+  return (
+    <div className="track">
+      <ol aria-label={t('orderProgress')}>
+        {TRACK.map((s, i) => <li key={s} className={i < at ? 'done' : i === at ? 'on' : ''} aria-current={i === at ? 'step' : undefined}><i />{t(`track_step_${s}`)}</li>)}
+      </ol>
+      <p className="small muted">{t(o.status === 'delivered' && o.profit_locked ? 'track_delivered_locked' : `track_${o.status}`)}</p>
+    </div>
+  );
+}
+
 export function OrderRow({ o, onClick }) {
   const { t, lang } = useApp();
   return (
@@ -312,6 +386,7 @@ export function Orders({ data, openId, reload, notify }) {
         {current && (
           <div className="stack">
             <div className="row-between"><b>{pname(current.products, lang)} × {num(current.quantity, lang)}</b><StatusPill status={current.status} /></div>
+            <OrderTracker o={current} />
             <dl className="kv">
               <dt>{t('yourPrice')}</dt><dd>{money(current.unit_price, lang)}</dd>
               {orderFee(current) > 0 && <><dt>{t('profitBeforeFee')}</dt><dd>{money(orderGross(current), lang)}</dd><dt>{t('forsaFeeLine', { p: num(Number(current.fee_pct), lang) })}</dt><dd>−{money(orderFee(current), lang)}</dd></>}
@@ -319,6 +394,9 @@ export function Orders({ data, openId, reload, notify }) {
               <dt>{t('customerName')}</dt><dd>{current.customer_name}</dd>
               <dt>{t('customerPhone')}</dt><dd dir="ltr">{current.customer_phone}</dd>
               <dt>{t('address')}</dt><dd>{current.address}, {lang === 'ar' ? (GOVERNORATES.find((g) => g[0] === current.governorate)?.[1] || current.governorate) : current.governorate}</dd>
+              {current.product_options ? <><dt>{t('productOptions')}</dt><dd>{current.product_options}</dd></> : null}
+              <dt>{t('shippingFee')}</dt><dd>{money(current.shipping_fee || 0, lang)}</dd>
+              <dt>{t('collectTotal')}</dt><dd><b>{money(current.unit_price * current.quantity + (current.shipping_fee || 0), lang)}</b></dd>
               {current.notes ? <><dt>{t('notes')}</dt><dd>{current.notes}</dd></> : null}
             </dl>
             {current.own_order && <p className="small muted">{t('ownOrder')}</p>}
