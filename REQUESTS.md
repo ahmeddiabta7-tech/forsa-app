@@ -67,6 +67,16 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 
 ---
 
+## Next (Part 2): free AI advisor in My Business — waiting for Ahmed's Gemini API key
+- "Get advice" button gives a short report for that business; the seller can also ask a question. Each = 1 Gemini request.
+- Daily limit per seller = a setting (start at 5; Ahmed can change it to 3, 10… without an app update).
+- Use the lightest model (Gemini Flash-Lite) for the highest free limit. Free limits are per Google project
+  (roughly 100–1,000 requests/day and 5–15/minute in 2026; check the real numbers in Google AI Studio).
+  With 5 per seller: 100/day ≈ 20 heavy users (50–100 realistic); 1,000/day ≈ 200 heavy users (500–1,000 realistic).
+- When the minute or day limit is reached, show "try again later" and the normal smart tips; nothing else breaks.
+- Runs in a Supabase Edge Function; the key is a Supabase secret Ahmed saves himself. Send only anonymous numbers
+  (free plan data may be used by Google). Move to paid billing when sellers grow.
+
 ## Removed after discussion
 - Forsa team calling every customer (too costly). Order confirmation will be automatic later (courier or WhatsApp/SMS).
 - The "at least 2 different customers" condition (the approval gate makes it unnecessary).
