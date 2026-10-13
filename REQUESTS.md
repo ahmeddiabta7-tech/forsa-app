@@ -4,13 +4,12 @@ Agreed with Ahmed in Advisor mode on 12 Oct 2026 (full reasoning: "Forsa_Busines
 **Status (13 Oct 2026):** R4, R5, R6, R7 and a new version of the 3-pieces rule are BUILT in version 1.7 (see PROGRESS.md).
 The EGP 100 option was removed. Part 2 (free AI advisor in My Business) is next.
 
-## ⚠️ Open problems to solve (on hold — do not build)
-1. **Preventing personal purchases** (sellers buying products for themselves through Forsa, competing with real sellers).
-   Partly handled in v1.7 (13 Oct 2026): profit is held until 3 delivered pieces, and orders to the seller's own number
-   never count toward 3 (their profit is still paid once unlocked). Still open: a seller can use a friend's number.
-   On hold since 12 Oct 2026 until a fuller solution is found. R1, R2 and R3 below are the ideas discussed so far
-   (approval gate, hold the money, self-orders at full price, own-number check) — **none are approved for building yet.**
-   When Ahmed asks "what problems do we have to solve?", mention this one first.
+## ✅ Solved problems
+1. **Preventing personal purchases** — SOLVED (13 Oct 2026, Ahmed's decision). The 3-pieces rule (v1.7) holds the
+   seller's profit until 3 pieces are delivered, so nobody buys 3 pieces at near-market price just for personal use.
+   Orders to the seller's own number don't count toward 3. Once a seller is unlocked, buying for himself and getting
+   his profit back is accepted (he may resell it by hand). R1–R3 below are no longer needed.
+
 Everything else in the app stays as it is (no new tabs, Make your own unchanged).
 
 ---
