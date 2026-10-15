@@ -16,7 +16,7 @@ export function Plan({ data }) {
         <span className="eyebrow">{t('planTitle')}</span>
         <p className="plan-big">{plan.unlocked ? t('planNow_open', { d: date(plan.unlockedUntil, lang) }) : t('planNow_locked', { h: num(plan.held, lang) })}</p>
         {sum.locked > 0 && <p className="small"><Icon name="lock" size={14} /> {t('lockedProfit')}: <b>{money(sum.locked, lang)}</b> · {t('lockedNote')}</p>}
-        <PlanRules />
+        <PlanRules full />
       </div>
       <Button block variant="ghost" onClick={() => go('/earnings')}><Icon name="wallet" size={18} /> {t('earnings')}</Button>
     </div>

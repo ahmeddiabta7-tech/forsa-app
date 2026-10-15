@@ -2,6 +2,14 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.9 — Oct 2026
+- Welcome screen and intro tell what Forsa is, not the rules: tagline "with or without capital"; a "Why Forsa" card
+  (no stock, your own brand, your whole business in one app, grow with partners); intro slide 3 = build your own brand.
+- The profit rule is explained simply inside the app: under the balance on Home (while locked), in the business
+  creation form ("How your profit works"), the How it works sheet and the Plan page:
+  "We hold your profit until your first 3 pieces are delivered. Then your account is unlocked for a month…"
+- No database change.
+
 ## Version 1.8 — Oct 2026
 - **New order form in 2 short steps:** 1) Customer: name, phone, governorate (shows the shipping price), address,
   product details (size, color or anything the customer chose — optional), notes. 2) Review: customer recap with Edit,

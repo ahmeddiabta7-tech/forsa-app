@@ -1,6 +1,6 @@
 // My Business: a seller's businesses, their products and their analytics.
 import React, { useEffect, useState } from 'react';
-import { useApp, Button, Field, Header, Spinner, useLoad, Sheet, Icon, go, money, pname, imgSrc, feeFor } from '../core.jsx';
+import { useApp, PlanRules, Button, Field, Header, Spinner, useLoad, Sheet, Icon, go, money, pname, imgSrc, feeFor } from '../core.jsx';
 import { GOVERNORATES } from '../lib/i18n.js';
 import { Analytics } from './Grow.jsx';
 import { ThreadList } from './Make.jsx';
@@ -152,6 +152,7 @@ export function BusinessForm({ business, onClose, onSaved, onDeleted, notify }) 
           <select id="bz-city" value={f.city} onChange={set('city')}>{GOVERNORATES.map(([en, ar]) => <option key={en} value={en}>{lang === 'ar' ? ar : en}</option>)}</select>
         </Field>
         <Field id="bz-desc" label={t('bizDesc')}><textarea id="bz-desc" rows="2" maxLength={500} value={f.description} onChange={set('description')} /></Field>
+        {!f.id && <div className="rules-box"><b>{t('profitRulesTitle')}</b><PlanRules /></div>}
         {err.form && <p className="form-error" role="alert">{err.form}</p>}
         <button type="submit" className="btn btn-primary block" disabled={busy}>{busy ? t('loading') : t('saveBusiness')}</button>
       </form>

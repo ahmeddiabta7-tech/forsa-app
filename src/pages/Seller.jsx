@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  useApp, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, AccountButton, MiniBars, greeting,
+  useApp, PlanRules, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, AccountButton, MiniBars, greeting,
   money, num, date, pname, imgSrc, orderProfit, orderGross, orderFee, feeFor, planState, earningsSummary, latinDigits,
 } from '../core.jsx';
 import { computeStats, inPeriod, expensesIn, profitSeries, getAdvice } from '../lib/advisor.js';
@@ -11,15 +11,7 @@ import { GOVERNORATES, CATEGORIES } from '../lib/i18n.js';
 import { PLAN } from '../config.js';
 import * as api from '../lib/api.js';
 
-// ---------- Plan rules (shared: Home sheet, Plan page, Welcome) ----------
-export function PlanRules() {
-  const { t } = useApp();
-  return (
-    <ul className="ticks">
-      {['planM1', 'planSkip', 'planM2', 'planCount', 'planFee'].map((k) => <li key={k}><Icon name="check" size={16} />{t(k)}</li>)}
-    </ul>
-  );
-}
+export { PlanRules } from '../core.jsx';
 
 // ---------- Balance card with this month's tracker (Home) ----------
 function BalanceCard({ plan, balance }) {
@@ -74,6 +66,7 @@ export function Home({ data }) {
       </div>
       <h1 className="headline">{t('welcomeBack')}</h1>
       <BalanceCard plan={plan} balance={sum.balance} />
+      {!plan.unlocked && <div className="rules-note"><Icon name="lock" size={16} /><p>{t('planM1')} {t('planSkip')}</p></div>}
       {(data.businesses || []).length === 0 && (
         <button type="button" className="card link-card" onClick={() => go('/business')}>
           <span className="svc-icon"><Icon name="store" /></span>

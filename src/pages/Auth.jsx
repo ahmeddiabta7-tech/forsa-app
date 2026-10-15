@@ -23,10 +23,9 @@ export function Intro({ onDone }) {
     )],
     ['intro3t', 'intro3d', (
       <div className="ink-card art-goal" key="c">
-        <span className="eyebrow">{t('monthLine', { d: lang === 'ar' ? '٣' : '3', n: lang === 'ar' ? '٣' : '3' })}</span>
-        <b className="big">{lang === 'ar' ? '٠ ج.م' : 'EGP 0'}</b>
-        <div className="tracker"><span className="on" /><span className="on" /><span className="on" /></div>
-        <small>{t('monthDone')}</small>
+        <span className="eyebrow">{t('makeYourOwn')}</span>
+        <b className="big"><Icon name="factory" size={30} /> {t('yourBrand')}</b>
+        <small>{lang === 'ar' ? 'صابون · شموع · قهوة وتوابل' : 'Soaps · candles · coffee & spices'}</small>
       </div>
     )],
   ];
@@ -88,9 +87,9 @@ export function Welcome() {
         ))}
       </ol>
       <div className="card plan-mini">
-        <h3>{t('planTitle')}</h3>
+        <h3>{t('whyTitle')}</h3>
         <ul>
-          {['planNoStock', 'planM1', 'planSkip', 'planM2'].map((k) => <li key={k}><Icon name="check" size={16} />{t(k)}</li>)}
+          {['planNoStock', 'why2', 'why3', 'why4'].map((k) => <li key={k}><Icon name="check" size={16} />{t(k)}</li>)}
         </ul>
       </div>
       <div className="stack">

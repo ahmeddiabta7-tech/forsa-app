@@ -93,6 +93,13 @@ export function earningsSummary(orders, payouts) {
 }
 
 // ---------- UI components ----------
+// The profit rule in a few short lines (Home sheet, Plan page, business creation). `full` adds the small print.
+export function PlanRules({ full }) {
+  const { t } = useApp();
+  const keys = ['planM1', 'planSkip', 'planM2', 'planFee', ...(full ? ['planCount'] : [])];
+  return <ul className="ticks">{keys.map((k) => <li key={k}><Icon name="check" size={16} />{t(k)}</li>)}</ul>;
+}
+
 export function Button({ children, variant = 'primary', block, small, ...rest }) {
   return <button type="button" className={`btn btn-${variant}${block ? ' block' : ''}${small ? ' small' : ''}`} {...rest}>{children}</button>;
 }
