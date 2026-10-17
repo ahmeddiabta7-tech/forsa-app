@@ -2,7 +2,7 @@
 
 Agreed with Ahmed in Advisor mode on 12 Oct 2026 (full reasoning: "Forsa_Business_Decisions.docx").
 **Status (13 Oct 2026):** R4, R5, R6, R7 and a new version of the 3-pieces rule are BUILT in version 1.7 (see PROGRESS.md).
-The EGP 100 option was removed. Part 2 (free AI advisor in My Business) is next.
+The EGP 100 option was removed. Part 2 (free AI advisor) is BUILT in version 1.10; it switches on when Ahmed adds the Gemini key.
 
 ## ✅ Solved problems
 1. **Preventing personal purchases** — SOLVED (13 Oct 2026, Ahmed's decision). The 3-pieces rule (v1.7) holds the
@@ -66,7 +66,7 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 
 ---
 
-## Next (Part 2): free AI advisor in My Business — waiting for Ahmed's Gemini API key
+## Part 2: free AI advisor — BUILT in v1.10 (on when Ahmed saves GEMINI_API_KEY in Supabase secrets)
 - "Get advice" button gives a short report for that business; the seller can also ask a question. Each = 1 Gemini request.
 - Daily limit per seller = a setting (start at 5; Ahmed can change it to 3, 10… without an app update).
 - Use the lightest model (Gemini Flash-Lite) for the highest free limit. Free limits are per Google project

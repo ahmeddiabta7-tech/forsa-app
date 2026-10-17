@@ -4,6 +4,7 @@ import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Icon, go, mo
 import { PAYMENT_INFO } from '../config.js';
 import { GOVERNORATES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
+import { AdvisorThreadRow } from './Advisor.jsx';
 
 const mname = (m, lang) => (m ? (lang === 'ar' ? m.name_ar : m.name_en) : '');
 const STEPS = ['requested', 'quoted', 'accepted', 'sample', 'production', 'final_payment', 'live'];
@@ -272,6 +273,7 @@ export function Inbox({ bizId, data, unread }) {
           {businesses.map((b) => <button type="button" key={b.id} className="chip" aria-pressed={bizId === b.id} onClick={() => go(`/inbox/${b.id}`)}>{b.name}</button>)}
         </div>
       )}
+      <AdvisorThreadRow bizId={bizId} />
       {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : <ThreadList threads={shown} unread={unread} />}
     </div>
   );

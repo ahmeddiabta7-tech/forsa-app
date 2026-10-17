@@ -2,6 +2,19 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.10 — Oct 2026 (Forsa AI advisor)
+- **Forsa AI advisor** (free, Google Gemini Flash-Lite through the Supabase Edge Function `advisor`):
+  - A box inside each business, under "Order status" and before "Smart tips": "Get advice for this business" gives a short
+    report built on that business's own numbers; the seller can also type a question. Shows "x of 5 left today".
+  - A pinned "Forsa AI advisor" conversation at the top of Messages, with the full history per business and quick questions.
+  - Limit: 5 answers a day per seller (Cairo day), counted in the database (`ai_daily_limit()` in v1_9.sql — change the number there).
+  - If the AI is slow (over ~20 s), down, or the key is missing, the seller sees: "The Forsa AI advisor isn't available
+    right now because of a server problem. Please try again in a few minutes." A failed answer does not use the quota.
+  - Privacy: only anonymous numbers are sent (no customer names, phones or addresses).
+- Database: `supabase/v1_9.sql` (ai_messages, ai_usage, quota functions).
+- Tests: 24 edge-function unit tests, database tests (limit, privacy between sellers), phone tests on iPhone SE,
+  iPhone 14 Pro Max, Galaxy S8 in English and Arabic, plus the full regression sweep.
+
 ## Version 1.9.1 — Oct 2026 (quality check)
 - Full check: code (unused code and old EGP 100 texts removed), database security audit (every table has row-level
   security, all security-definer functions set search_path, internal functions not callable), all database files re-run cleanly.

@@ -4,6 +4,7 @@ import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, Icon,
 import { SERVICES, COST_CATEGORIES } from '../lib/i18n.js';
 import { computeStats, inPeriod, expensesIn, profitSeries, bestSellers, getAdvice } from '../lib/advisor.js';
 import * as api from '../lib/api.js';
+import { AdvisorBox } from './Advisor.jsx';
 
 // Turns a tip { key, vars } into text in the current language.
 export function tipText(tip, t, lang) {
@@ -117,6 +118,8 @@ export function Analytics({ data, reload, notify, embedded, businessId }) {
           </div>
         </div>
       </div>
+
+      {profile.role !== 'agency' && <AdvisorBox businessId={businessId || null} />}
 
       <div className="section-head"><h2>{t('smartTips')}</h2></div>
       <p className="muted small">{t('tipsNote')}</p>

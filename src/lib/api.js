@@ -1,5 +1,5 @@
 // All data access for the app. Uses Supabase when configured, otherwise a local demo store.
-import { isConfigured, db, storage, auth, getSession } from './supa.js';
+import { isConfigured, db, storage, auth, getSession, invokeFunction } from './supa.js';
 import { DEMO_PRODUCTS, DEMO_MANUFACTURERS } from './demo.js';
 import { PLAN } from '../config.js';
 import { GOVERNORATES } from './i18n.js';
@@ -21,7 +21,7 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
-  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs'].forEach((k) => { if (!d[k]) d[k] = []; });
+  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage'].forEach((k) => { if (!d[k]) d[k] = []; });
   d.orders.forEach((o) => { if (o.status === 'on_hold') o.status = 'pending'; }); // old demo data
   if (!d.shipping_rates) d.shipping_rates = GOVERNORATES.map(([g]) => ({ governorate: g, fee: 70, active: true }));
   if (!d.manufacturers) d.manufacturers = DEMO_MANUFACTURERS.map((m, i) => ({ ...m, id: `m${i + 1}`, active: true, created_at: new Date().toISOString() }));
@@ -566,6 +566,49 @@ export async function goLive(c, product) {
   await addToBusiness(c.business_id, productId);
   await recordProductionCost(c);
   return patchCustom(c.id, { status: 'live', balance_confirmed: true, product_id: productId });
+}
+
+// ---------- Forsa AI advisor ----------
+// Live: the "advisor" Edge Function (Gemini). Demo: a simple local answer so the screens can be tested.
+// Errors: e.code = 'limit' (5 a day used) or 'ai_unavailable' (AI or server problem).
+export const AI_DAILY_LIMIT = 5;
+const aiToday = () => new Date(Date.now() + 2 * 36e5).toISOString().slice(0, 10); // Cairo-ish day for demo mode
+
+export async function advisorQuota() {
+  if (live) { const n = await db.rpc('ai_quota_left'); return Number(n); }
+  const u = demo.ai_usage.find((x) => x.user_id === meId() && x.day === aiToday());
+  return Math.max(0, AI_DAILY_LIMIT - (u?.used || 0));
+}
+
+export async function advisorMessages(businessId) {
+  const biz = businessId ? `&business_id=eq.${businessId}` : '&business_id=is.null';
+  if (live) return db.select('ai_messages', `select=id,role,body,business_id,created_at&user_id=eq.${getSession()?.user?.id}${biz}&order=created_at.asc&limit=100`);
+  return demo.ai_messages.filter((m) => m.user_id === meId() && (m.business_id || null) === (businessId || null)).sort((a, b) => a.created_at.localeCompare(b.created_at));
+}
+
+export async function askAdvisor({ businessId = null, question = '', lang = 'en' }) {
+  if (live) return invokeFunction('advisor', { business_id: businessId, question: question.trim().slice(0, 500), lang });
+  await new Promise((r) => setTimeout(r, 500));
+  let fail = false; try { fail = localStorage.getItem('forsa-ai-fail') === '1'; } catch { /* ignore */ }
+  if (fail) { const e = new Error('ai_unavailable'); e.code = 'ai_unavailable'; throw e; }
+  const left = await advisorQuota();
+  if (left <= 0) { const e = new Error('limit'); e.code = 'limit'; throw e; }
+  const mine = demo.orders.filter((o) => o.seller_id === meId() && (!businessId || o.business_id === businessId));
+  const delivered = mine.filter((o) => o.status === 'delivered').length;
+  const answer = lang === 'ar'
+    ? `- عندك ${mine.length} أوردر، اتسلّم منهم ${delivered}.\n- انشر منتجك الأكتر مبيعًا مرتين في الأسبوع بصورة جديدة.\n- أكّد العنوان مع العميل قبل ما تطلب عشان تقلل المرتجعات.\nالخطوة الجاية: انشر ستوري النهارده بالسعر.`
+    : `- You have ${mine.length} orders, ${delivered} delivered.\n- Post your best seller twice a week with a new photo.\n- Confirm the address with the customer before ordering to cut returns.\nNext step: post a story with the price today.`;
+  const asked = question.trim() || (lang === 'ar' ? 'اديني نصيحة لمشروعي' : 'Give me advice for my business');
+  const t0 = Date.now();
+  const rows = [
+    { id: uid(), user_id: meId(), business_id: businessId, role: 'user', body: asked, created_at: new Date(t0).toISOString() },
+    { id: uid(), user_id: meId(), business_id: businessId, role: 'assistant', body: answer, created_at: new Date(t0 + 1).toISOString() },
+  ];
+  demo.ai_messages.push(...rows);
+  const u = demo.ai_usage.find((x) => x.user_id === meId() && x.day === aiToday());
+  if (u) u.used += 1; else demo.ai_usage.push({ user_id: meId(), day: aiToday(), used: 1 });
+  demoSave();
+  return { answer, remaining: left - 1, messages: rows };
 }
 
 // ---------- helpers ----------

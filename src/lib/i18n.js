@@ -151,6 +151,7 @@ export const STRINGS = {
     track_delivered_locked: 'Delivered and cash collected. Your profit is locked until 3 pieces are delivered.',
     track_returned: 'The customer didn\'t receive this order, so it came back.', track_cancelled: 'This order was cancelled.',
     whyTitle: 'Why Forsa', why2: 'Your own brand, made by our partner factories.', why3: 'Your whole business in one app: page, products, orders and profit.', why4: 'Grow with marketing partners and smart tips.', profitRulesTitle: 'How your profit works', yourBrand: 'Your brand',
+    aiTitle: 'Forsa AI advisor', aiIntro: 'Smart advice built on your own sales numbers.', aiLeft: '{n} of {m} left today', aiGetAdvice: 'Get advice for this business', aiGetAdviceAll: 'Get advice', aiAsk: 'Ask about your business…', aiAskBtn: 'Ask', aiThinking: 'Thinking…', aiOpenChat: 'Open conversation', aiDown: 'The Forsa AI advisor isn\'t available right now because of a server problem. Please try again in a few minutes.', aiLimit: 'You\'ve used today\'s {m} AI answers. Come back tomorrow. The smart tips below are always free.', aiEmpty: 'Ask anything about selling: prices, posts, products, returns. I answer from your own numbers.', aiQ1: 'How can I get more orders this week?', aiQ2: 'Is my selling price good?', aiQ3: 'How do I reduce returns?', aiPrivacy: 'Only your numbers are used, never names or phone numbers.', aiConvSub: 'Ask about your business · {n} left today', aiAdvisorLabel: 'AI advisor',
     example: 'Example', account: 'My account',
   },
   ar: {
@@ -304,6 +305,7 @@ export const STRINGS = {
     track_delivered_locked: 'اتسلّم والفلوس اتحصّلت. مكسبك مقفول لحد ما يتسلّم ٣ قطع.',
     track_returned: 'العميل ما استلمش الأوردر فرجع.', track_cancelled: 'الأوردر ده اتلغى.',
     whyTitle: 'ليه فرصة', why2: 'البراند بتاعك، بتصنيع مصانعنا الشريكة.', why3: 'مشروعك كله في تطبيق واحد: صفحتك ومنتجاتك وأوردراتك ومكسبك.', why4: 'اكبر مع شركاء التسويق والنصايح الذكية.', profitRulesTitle: 'إزاي مكسبك بيوصلك', yourBrand: 'البراند بتاعك',
+    aiTitle: 'مستشار فرصة الذكي', aiIntro: 'نصايح ذكية مبنية على أرقام مبيعاتك انت.', aiLeft: 'فاضل {n} من {m} النهارده', aiGetAdvice: 'هات نصيحة للمشروع ده', aiGetAdviceAll: 'هات نصيحة', aiAsk: 'اسأل عن مشروعك…', aiAskBtn: 'اسأل', aiThinking: 'بيفكّر…', aiOpenChat: 'افتح المحادثة', aiDown: 'مستشار فرصة الذكي مش متاح دلوقتي بسبب مشكلة في السيرفر. جرّب تاني بعد شوية.', aiLimit: 'استخدمت الـ {m} إجابات بتوع النهارده. ارجع بكره. النصايح الذكية اللي تحت مجانية دايمًا.', aiEmpty: 'اسأل أي حاجة عن البيع: الأسعار، البوستات، المنتجات، المرتجعات. هرد عليك من أرقامك انت.', aiQ1: 'إزاي أجيب أوردرات أكتر الأسبوع ده؟', aiQ2: 'سعر البيع بتاعي كويس؟', aiQ3: 'إزاي أقلل المرتجعات؟', aiPrivacy: 'بنستخدم أرقامك بس، عمرنا ما بنبعت أسماء أو أرقام تليفونات.', aiConvSub: 'اسأل عن مشروعك · فاضل {n} النهارده', aiAdvisorLabel: 'المستشار الذكي',
     example: 'مثال', account: 'حسابي',
   },
 };

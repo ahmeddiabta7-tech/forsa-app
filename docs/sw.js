@@ -1,5 +1,5 @@
 // Network-first service worker: works offline for the app shell, never serves stale data.
-const CACHE = 'forsa-v1-9';
+const CACHE = 'forsa-v1-10';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));

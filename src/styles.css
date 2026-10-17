@@ -414,3 +414,33 @@ input, select, textarea { font-size: 16px; }
   .art-photos img { height: 160px; }
   .form-img { height: 220px; }
 }
+
+/* v1.10: Forsa AI advisor */
+.ai-box { gap: 12px; border-color: var(--ink); }
+.ai-head { display: flex; gap: 12px; align-items: center; }
+.ai-badge { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--on-ink); flex: none; }
+.ai-badge.big { width: 52px; height: 52px; }
+.ai-quota { align-self: flex-start; font-size: 12px; font-weight: 700; background: var(--surface-2); border-radius: 999px; padding: 4px 10px; }
+.ai-answer { background: var(--surface-2); border-radius: var(--r-sm); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.ai-q { margin: 0; font-size: 13px; font-weight: 700; }
+.ai-text { font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.ai-text p { margin: 0 0 4px; white-space: normal; }
+.ai-text ul { margin: 0 0 4px; padding-inline-start: 18px; }
+.ai-text li { margin-bottom: 3px; }
+.ai-ask { display: flex; gap: 8px; }
+.ai-ask input { flex: 1; min-width: 0; }
+.ai-ask .btn { flex: none; padding: 12px 16px; }
+.ai-notice { margin: 0; padding: 10px 12px; border-radius: var(--r-sm); font-size: 13px; background: var(--warn-bg); color: var(--warn); }
+.ai-notice.down { background: var(--bad-bg); color: var(--bad); }
+.ai-thinking { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--muted); }
+.ai-dots { display: inline-flex; gap: 4px; }
+.ai-dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: aidot 1s infinite ease-in-out; }
+.ai-dots i:nth-child(2) { animation-delay: .15s; } .ai-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes aidot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .ai-dots i { animation: none; } }
+.msg.ai { max-width: 92%; }
+.ai-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 24px 8px; }
+.ai-empty p { margin: 0; color: var(--muted); }
+.ai-quick { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.ai-row { border-color: var(--ink); }
+.ai-quick .chip { text-transform: none; }

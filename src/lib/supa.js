@@ -143,3 +143,29 @@ export const storage = {
     return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
   },
 };
+
+// ---------- Edge Functions ----------
+// Calls a Supabase Edge Function with the user's login. Network problems and timeouts come back as code 'ai_unavailable'.
+export async function invokeFunction(name, body, timeoutMs = 45000) {
+  const t = await token();
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/${name}`, {
+      method: 'POST', signal: ctrl?.signal,
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${t || SUPABASE_ANON_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+  } catch (e) {
+    const err = new Error('Service unavailable'); err.code = 'ai_unavailable'; throw err;
+  } finally { if (timer) clearTimeout(timer); }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error(data?.code || 'Service unavailable');
+    err.status = res.status;
+    err.code = data?.code || (res.status === 429 ? 'limit' : res.status === 401 ? 'auth' : 'ai_unavailable');
+    throw err;
+  }
+  return data;
+}

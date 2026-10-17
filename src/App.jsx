@@ -8,6 +8,7 @@ import { MyBusiness } from './pages/Business.jsx';
 import { ChatPage, AgencyHome } from './pages/Chat.jsx';
 import { MakeHome, ManufacturerPage, CustomRequestPage, Inbox } from './pages/Make.jsx';
 import { Admin } from './pages/Admin.jsx';
+import { AdvisorChat } from './pages/Advisor.jsx';
 import * as api from './lib/api.js';
 import { auth } from './lib/supa.js';
 
@@ -72,7 +73,7 @@ export default function App() {
   const [, sectionNow] = route.split('/');
   useEffect(() => {
     if (booting || !profile) return;
-    if (['home', 'orders', 'analytics', 'earnings', 'plan', 'business', 'products', 'services', 'make', 'inbox', ''].includes(sectionNow || '')) loadData().catch(() => {});
+    if (['home', 'orders', 'analytics', 'earnings', 'plan', 'business', 'products', 'services', 'make', 'inbox', 'advisor', ''].includes(sectionNow || '')) loadData().catch(() => {});
   }, [sectionNow, booting, profile?.id, loadData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New chat messages: check every 30 seconds (and when the screen changes).
@@ -123,6 +124,7 @@ export default function App() {
         break;
       }
       case 'inbox': screen = <Inbox bizId={b} data={data} unread={unread} />; break;
+      case 'advisor': screen = <AdvisorChat bizId={b} data={data} />; break;
       case 'services': screen = <Services notify={notify} data={data} unread={unread} />; break;
       case 'chat': screen = <ChatPage id={b} onRead={loadUnread} />; break;
       case 'admin': screen = profile.role === 'admin' ? <Admin notify={notify} /> : null; break;
@@ -133,7 +135,7 @@ export default function App() {
   const [, section] = route.split('/');
   const showNav = profile && profile.role !== 'agency' && !booting && !recovery && section !== 'admin';
   const tabs = [['home', 'home', 'home'], ['products', 'grid', 'products'], ['orders', 'box', 'orders'], ['business', 'store', 'bizTab'], ['services', 'megaphone', 'services'], ['ideas', 'bulb', 'ideas']];
-  const active = ['product', 'make'].includes(section) ? 'products' : section === 'inbox' ? 'business' : section === 'idea' ? 'ideas' : section === 'chat' ? 'services'
+  const active = ['product', 'make'].includes(section) ? 'products' : ['inbox', 'advisor'].includes(section) ? 'business' : section === 'idea' ? 'ideas' : section === 'chat' ? 'services'
     : section === 'analytics' ? 'business' : section === 'earnings' ? 'home' : section || 'home';
 
   return (
