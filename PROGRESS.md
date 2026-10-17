@@ -2,6 +2,15 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.9.1 — Oct 2026 (quality check)
+- Full check: code (unused code and old EGP 100 texts removed), database security audit (every table has row-level
+  security, all security-definer functions set search_path, internal functions not callable), all database files re-run cleanly.
+- Phones: form fields are 16px so iPhones don't zoom in; -webkit- prefix for the blurred bars (older iPhones);
+  overlay/sheet sizes work on older iPhones; square product photos on phones without aspect-ratio support; no text
+  inflation in landscape; no grey tap flash. Tested on iPhone SE (320 px), iPhone 14 Pro Max, Galaxy S8 and Galaxy S5
+  profiles in English and Arabic: 340 screen checks, no issues.
+- Offline cache keeps only the newest version of each file (it no longer grows with every update).
+
 ## Version 1.9 — Oct 2026
 - Welcome screen and intro tell what Forsa is, not the rules: tagline "with or without capital"; a "Why Forsa" card
   (no stock, your own brand, your whole business in one app, grow with partners); intro slide 3 = build your own brand.

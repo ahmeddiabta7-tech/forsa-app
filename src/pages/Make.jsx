@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Icon, go, money, num, date } from '../core.jsx';
 import { PAYMENT_INFO } from '../config.js';
 import { GOVERNORATES } from '../lib/i18n.js';
-import { BizLogo } from './Business.jsx';
 import * as api from '../lib/api.js';
 
 const mname = (m, lang) => (m ? (lang === 'ar' ? m.name_ar : m.name_en) : '');

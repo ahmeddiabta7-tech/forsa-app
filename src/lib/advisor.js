@@ -118,7 +118,6 @@ export function ruleTips(allOrders, plan, products = [], expenses = []) {
   const tips = [];
   const s = computeStats(allOrders);
   const month = computeStats(inPeriod(allOrders, 'month'), expensesIn(expenses, 'month'));
-  const goalOrders = 3;
   if (s.orders === 0) {
     tips.push({ key: 'tip_first' });
     tips.push({ key: 'tip_post3' });

@@ -1,6 +1,6 @@
 // Admin panel (English only, for the Forsa team).
 import React, { useMemo, useState } from 'react';
-import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, orderFee, imgSrc, planState, earningsSummary, go } from '../core.jsx';
+import { Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, orderFee, imgSrc, planState, earningsSummary, go } from '../core.jsx';
 import { CATEGORIES, GOVERNORATES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
@@ -405,7 +405,6 @@ function AdminPartners({ notify }) {
 }
 
 // ---------- Manufacturing: partner manufacturers + custom product requests ----------
-const C_STEPS = ['requested', 'quoted', 'accepted', 'sample', 'production', 'final_payment', 'live', 'cancelled'];
 const C_LABEL = { requested: 'New request', quoted: 'Quote sent', accepted: 'Waiting for deposit', sample: 'Sample', production: 'Production', final_payment: 'Waiting for final payment', live: 'Done', cancelled: 'Cancelled' };
 
 function AdminManufacturing({ notify }) {

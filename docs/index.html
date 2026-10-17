@@ -15,7 +15,7 @@
   <style>
     /* Opening animation: shown instantly on every launch, removed by the app after ~1.5s. */
     html, body { margin: 0; background: #f6f3ee; }
-    #splash { position: fixed; inset: 0; z-index: 100; background: #f6f3ee; color: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; transition: opacity .45s ease, visibility .45s; }
+    #splash { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 100; background: #f6f3ee; color: #111; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; transition: opacity .45s ease, visibility .45s; }
     #splash.out { opacity: 0; visibility: hidden; }
     #splash .w { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Arial, sans-serif; font-weight: 800; font-size: 64px; letter-spacing: -.05em; line-height: 1; display: flex; overflow: hidden; padding: 4px 6px; }
     #splash .w span { display: inline-block; transform: translateY(105%); animation: rise .6s cubic-bezier(.2,.8,.2,1) forwards; }
@@ -28,7 +28,7 @@
     @keyframes grow { to { width: 46px; } }
     @media (prefers-reduced-motion: reduce) { #splash * { animation: none !important; transform: none !important; opacity: 1 !important; } #splash .l { width: 46px; } }
   </style>
-  <link rel="stylesheet" href="app.css?v=mv9rcdmd">
+  <link rel="stylesheet" href="app.css?v=mvcpvla9">
 </head>
 <body>
   <div id="splash" aria-hidden="true">
@@ -37,6 +37,6 @@
     <div class="l"></div>
   </div>
   <div id="root"></div>
-  <script src="app.js?v=mv9rcdmd"></script>
+  <script src="app.js?v=mvcpvla9"></script>
 </body>
 </html>

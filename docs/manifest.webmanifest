@@ -1,7 +1,7 @@
 {
   "name": "Forsa",
   "short_name": "Forsa",
-  "description": "Start your business with zero capital.",
+  "description": "Start your business, with or without capital.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
