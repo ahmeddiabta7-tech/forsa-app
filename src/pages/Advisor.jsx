@@ -108,6 +108,7 @@ export function AdvisorChat({ bizId, data }) {
   const { t, lang } = useApp();
   const businesses = data.businesses || [];
   const businessId = businesses.some((b) => b.id === bizId) ? bizId : null;
+  const bizName = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
   const { msgs, left, busy, error, ask } = useAdvisor(businessId);
   const [q, setQ] = useState('');
   const endRef = useRef(null);
@@ -139,7 +140,7 @@ export function AdvisorChat({ bizId, data }) {
           </div>
         ) : msgs.map((m) => (
           <div key={m.id} className={`msg${m.role === 'user' ? ' mine' : ' ai'}`}>
-            {m.role !== 'user' && <span className="msg-who">{t('aiTitle')}</span>}
+            {m.role !== 'user' && <span className="msg-who">{t('aiTitle')}{!businessId && m.business_id && bizName[m.business_id] ? ` · ${bizName[m.business_id]}` : ''}</span>}
             {m.role === 'user' ? <p dir="auto">{m.body}</p> : <AiText text={m.body} />}
             <span className="msg-time">{new Date(m.created_at).toLocaleTimeString(lang === 'ar' ? 'ar-EG' : 'en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
           </div>

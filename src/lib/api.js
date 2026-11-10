@@ -580,10 +580,11 @@ export async function advisorQuota() {
   return Math.max(0, AI_DAILY_LIMIT - (u?.used || 0));
 }
 
+// Messages for one business; with no business ("All") the whole history. Newest 100, shown oldest first.
 export async function advisorMessages(businessId) {
-  const biz = businessId ? `&business_id=eq.${businessId}` : '&business_id=is.null';
-  if (live) return db.select('ai_messages', `select=id,role,body,business_id,created_at&user_id=eq.${getSession()?.user?.id}${biz}&order=created_at.asc&limit=100`);
-  return demo.ai_messages.filter((m) => m.user_id === meId() && (m.business_id || null) === (businessId || null)).sort((a, b) => a.created_at.localeCompare(b.created_at));
+  const biz = businessId ? `&business_id=eq.${businessId}` : '';
+  if (live) return (await db.select('ai_messages', `select=id,role,body,business_id,created_at&user_id=eq.${getSession()?.user?.id}${biz}&order=created_at.desc&limit=100`)).reverse();
+  return demo.ai_messages.filter((m) => m.user_id === meId() && (!businessId || m.business_id === businessId)).sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-100);
 }
 
 export async function askAdvisor({ businessId = null, question = '', lang = 'en' }) {
