@@ -572,10 +572,13 @@ export async function goLive(c, product) {
 // Live: the "advisor" Edge Function (Gemini). Demo: a simple local answer so the screens can be tested.
 // Errors: e.code = 'limit' (5 a day used) or 'ai_unavailable' (AI or server problem).
 export const AI_DAILY_LIMIT = 5;
+// Admin accounts (Forsa team) have unlimited answers for testing (same rule as the database, v1_10.sql).
+export const AI_UNLIMITED = 9999;
 const aiToday = () => new Date(Date.now() + 2 * 36e5).toISOString().slice(0, 10); // Cairo-ish day for demo mode
 
 export async function advisorQuota() {
   if (live) { const n = await db.rpc('ai_quota_left'); return Number(n); }
+  if (demo.profiles.find((x) => x.id === meId())?.role === 'admin') return AI_UNLIMITED;
   const u = demo.ai_usage.find((x) => x.user_id === meId() && x.day === aiToday());
   return Math.max(0, AI_DAILY_LIMIT - (u?.used || 0));
 }
@@ -609,7 +612,7 @@ export async function askAdvisor({ businessId = null, question = '', lang = 'en'
   const u = demo.ai_usage.find((x) => x.user_id === meId() && x.day === aiToday());
   if (u) u.used += 1; else demo.ai_usage.push({ user_id: meId(), day: aiToday(), used: 1 });
   demoSave();
-  return { answer, remaining: left - 1, messages: rows };
+  return { answer, remaining: left === AI_UNLIMITED ? left : left - 1, messages: rows };
 }
 
 // ---------- helpers ----------

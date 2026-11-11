@@ -2,6 +2,18 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.11 — Nov 2026 (smarter AI advisor)
+- The advisor now checks the seller's account with every answer and points out problems with the fix: orders waiting
+  for confirmation over 2 days, shipped over 7 days, many returns or cancellations, a product with many returns,
+  profit locked (how many pieces are still needed), unlock period ending soon, missing payout details, no new orders.
+  It also celebrates real wins (delivered orders, best product, money received, progress toward 3 pieces).
+- It knows the full Forsa idea (ready products, own brand, fees, order steps, the 3-pieces rule) and is warm and motivating.
+  When asked about the 3 orders rule, its first point says the profit is locked until 3 pieces are delivered, then opens for 30 days.
+- Admin accounts (Forsa team) have unlimited AI answers for testing ("Unlimited (Forsa team)"). Sellers keep 5 a day.
+- Database: `supabase/v1_10.sql`. "All" in the advisor conversation shows the whole history with business names.
+- Tests: advisor unit tests (account check, privacy, handler), database tests (admin unlimited, seller limit 5),
+  phone sweep on iPhone SE, iPhone 14 Pro Max, Galaxy S8, Galaxy S5 in English and Arabic (180 checks, 0 issues).
+
 ## Version 1.10 — Oct 2026 (Forsa AI advisor)
 - **Forsa AI advisor** (free, Google Gemini Flash-Lite through the Supabase Edge Function `advisor`):
   - A box inside each business, under "Order status" and before "Smart tips": "Get advice for this business" gives a short

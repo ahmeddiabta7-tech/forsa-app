@@ -61,7 +61,7 @@ function AiNotice({ error }) {
 function Quota({ left }) {
   const { t, lang } = useApp();
   if (left == null) return null;
-  return <span className="ai-quota">{t('aiLeft', { n: num(left, lang), m: num(LIMIT, lang) })}</span>;
+  return <span className="ai-quota">{left > LIMIT ? t('aiUnlimited') : t('aiLeft', { n: num(left, lang), m: num(LIMIT, lang) })}</span>;
 }
 
 // ---------- Box inside a business (Analytics) ----------
@@ -166,7 +166,7 @@ export function AdvisorThreadRow({ bizId }) {
   return (
     <button type="button" className="order-row ai-row" onClick={() => go(bizId ? `/advisor/${bizId}` : '/advisor')}>
       <span className="svc-icon small ai-badge"><Icon name="sparkle" size={18} /></span>
-      <div className="or-main"><b>{t('aiTitle')}</b><span className="muted small">{left == null ? t('aiIntro') : t('aiConvSub', { n: num(left, lang) })}</span></div>
+      <div className="or-main"><b>{t('aiTitle')}</b><span className="muted small">{left == null ? t('aiIntro') : left > LIMIT ? t('aiConvSubUnlimited') : t('aiConvSub', { n: num(left, lang) })}</span></div>
       <Icon name="chevron" size={16} />
     </button>
   );
