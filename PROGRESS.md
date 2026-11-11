@@ -10,6 +10,8 @@
 - It knows the full Forsa idea (ready products, own brand, fees, order steps, the 3-pieces rule) and is warm and motivating.
   When asked about the 3 orders rule, its first point says the profit is locked until 3 pieces are delivered, then opens for 30 days.
 - Admin accounts (Forsa team) have unlimited AI answers for testing ("Unlimited (Forsa team)"). Sellers keep 5 a day.
+- Plans: the advisor can write a simple business plan or a 1-week organic content plan (no paid ads), with two quick
+  buttons in the advisor box and conversation.
 - Database: `supabase/v1_10.sql`. "All" in the advisor conversation shows the whole history with business names.
 - Tests: advisor unit tests (account check, privacy, handler), database tests (admin unlimited, seller limit 5),
   phone sweep on iPhone SE, iPhone 14 Pro Max, Galaxy S8, Galaxy S5 in English and Arabic (180 checks, 0 issues).

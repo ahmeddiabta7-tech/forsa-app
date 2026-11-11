@@ -444,3 +444,5 @@ input, select, textarea { font-size: 16px; }
 .ai-quick { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .ai-row { border-color: var(--ink); }
 .ai-quick .chip { text-transform: none; }
+.ai-quick.plans { justify-content: flex-start; margin: 4px 0 8px; }
+.ai-quick.plans .chip { font-size: 13px; }

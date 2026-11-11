@@ -91,6 +91,9 @@ export function AdvisorBox({ businessId }) {
       ) : null}
       <AiNotice error={error} />
       <button type="button" className="btn btn-primary block" onClick={() => ask('')} disabled={busy || left === 0}><Icon name="sparkle" size={18} /> {businessId ? t('aiGetAdvice') : t('aiGetAdviceAll')}</button>
+      <div className="ai-quick plans" role="group">
+        {['aiQ4', 'aiQ5'].map((k) => <button type="button" key={k} className="chip" onClick={() => ask(t(k))} disabled={busy || left === 0}>{t(k)}</button>)}
+      </div>
       <form className="ai-ask" onSubmit={submit}>
         <input aria-label={t('aiAsk')} placeholder={t('aiAsk')} value={q} onChange={(e) => setQ(e.target.value)} maxLength={500} disabled={busy || left === 0} />
         <button type="submit" className="btn btn-ghost" disabled={busy || left === 0 || !q.trim()}>{t('aiAskBtn')}</button>
@@ -135,7 +138,7 @@ export function AdvisorChat({ bizId, data }) {
             <p>{t('aiEmpty')}</p>
             <div className="ai-quick">
               <button type="button" className="chip" onClick={() => ask('')} disabled={busy || left === 0}>{t('aiGetAdviceAll')}</button>
-              {['aiQ1', 'aiQ2', 'aiQ3'].map((k) => <button type="button" key={k} className="chip" onClick={() => send(t(k))} disabled={busy || left === 0}>{t(k)}</button>)}
+              {['aiQ1', 'aiQ4', 'aiQ5', 'aiQ2', 'aiQ3'].map((k) => <button type="button" key={k} className="chip" onClick={() => send(t(k))} disabled={busy || left === 0}>{t(k)}</button>)}
             </div>
           </div>
         ) : msgs.map((m) => (
@@ -149,6 +152,11 @@ export function AdvisorChat({ bizId, data }) {
         <div ref={endRef} />
       </div>
       <AiNotice error={error} />
+      {msgs?.length > 0 && (
+        <div className="ai-quick plans" role="group">
+          {['aiQ4', 'aiQ5'].map((k) => <button type="button" key={k} className="chip" onClick={() => send(t(k))} disabled={busy || left === 0}>{t(k)}</button>)}
+        </div>
+      )}
       <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
         <textarea rows="1" dir="auto" aria-label={t('aiAsk')} placeholder={t('aiAsk')} value={q} maxLength={500} disabled={busy || left === 0}
           onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
