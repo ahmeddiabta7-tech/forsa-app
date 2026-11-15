@@ -87,3 +87,8 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 - Shipping paid in advance by the customer (for new sellers / risky orders) — after courier contracts are signed.
 - Return costs taken only from the seller's existing balance (never negative) — after courier contracts.
 - AI analytics and business advisor monthly subscription.
+- Business ranking dashboard + investing (idea from Ahmed, Nov 2026): a public leaderboard that ranks Forsa businesses
+  by real results (delivered sales, growth, low returns, consistency), with badges for top sellers. Investors (and
+  incubation partners) can browse top-ranked businesses and offer to invest in them or fund their own-brand production.
+  Before building: check Egyptian rules for raising money from the public (FRA crowdfunding rules), decide Forsa's role
+  (only connecting investors and sellers, or handling the money), and get the seller's permission before showing any numbers.
