@@ -93,6 +93,7 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
   growth, low returns and consistency; for ideas and own brands, stage reached (idea, sample, production, live) and
   results after launch. Top businesses get badges. Investors (and incubation partners) can browse the ranking and offer
   to invest in a business or idea, or fund its production.
+  Design reference: the ranking / investor dashboard in Ahmed's original Figma prototype (build it the same way).
   Before building: check Egyptian rules for raising money from the public (FRA crowdfunding rules), decide Forsa's role
   (only connecting investors and founders, or handling the money), and get the owner's permission before showing any
   numbers or idea details (protect ideas from being copied).
