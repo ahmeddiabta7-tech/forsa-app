@@ -9,6 +9,7 @@ import { ChatPage, AgencyHome } from './pages/Chat.jsx';
 import { MakeHome, ManufacturerPage, CustomRequestPage, Inbox } from './pages/Make.jsx';
 import { Admin } from './pages/Admin.jsx';
 import { AdvisorChat } from './pages/Advisor.jsx';
+import { WebsiteBuilder, Storefront } from './pages/Website.jsx';
 import * as api from './lib/api.js';
 import { auth } from './lib/supa.js';
 
@@ -64,6 +65,7 @@ export default function App() {
   // Route guards
   useEffect(() => {
     if (booting) return;
+    if (route.startsWith('/s/')) return; // public seller websites: open for everyone
     if (!profile && !PUBLIC.includes(route)) go('/');
     if (profile && PUBLIC.includes(route)) go('/home');
     if (profile && route.startsWith('/admin') && profile.role !== 'admin') go('/home');
@@ -73,7 +75,7 @@ export default function App() {
   const [, sectionNow] = route.split('/');
   useEffect(() => {
     if (booting || !profile) return;
-    if (['home', 'orders', 'analytics', 'earnings', 'plan', 'business', 'products', 'services', 'make', 'inbox', 'advisor', ''].includes(sectionNow || '')) loadData().catch(() => {});
+    if (['home', 'orders', 'analytics', 'earnings', 'plan', 'business', 'products', 'services', 'make', 'inbox', 'advisor', 'website', ''].includes(sectionNow || '')) loadData().catch(() => {});
   }, [sectionNow, booting, profile?.id, loadData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New chat messages: check every 30 seconds (and when the screen changes).
@@ -88,7 +90,9 @@ export default function App() {
   const unreadSum = Object.values(unread).reduce((x, n) => x + n, 0);
   const ctx = { ...L, profile, unreadTotal: unreadSum };
   let screen;
+  const storeSlug = route.startsWith('/s/') ? decodeURIComponent(route.split('/')[2] || '') : null;
   if (booting) screen = <Spinner />;
+  else if (storeSlug !== null) screen = <Storefront slug={storeSlug} />;
   else if (loadError) screen = <div className="screen"><ErrorBox error={loadError} onRetry={boot} /></div>;
   else if (recovery) screen = <ResetPassword onDone={(m) => { setRecovery(false); notify(m); go('/home'); }} />;
   else if (!profile) {
@@ -110,7 +114,10 @@ export default function App() {
         await loadData().catch(() => null);
         notify(L.t('orderPlaced')); go(o?.id ? `/orders/${o.id}` : '/orders');
       }} />; break;
-      case 'orders': screen = <Orders data={data} openId={b} reload={reload} notify={notify} />; break;
+      case 'orders': screen = <Orders data={data} openId={b} reload={reload} notify={notify} onOrdered={async (o) => {
+        await loadData().catch(() => null);
+        notify(L.t('orderPlaced')); go(o?.id ? `/orders/${o.id}` : '/orders');
+      }} />; break;
       case 'earnings': screen = <Earnings data={data} />; break;
       case 'more': screen = <More onLogout={logout} notify={notify} onProfileSaved={() => api.getProfile().then(setProfile)} />; break;
       case 'plan': screen = <Plan data={data} />; break;
@@ -125,6 +132,7 @@ export default function App() {
       }
       case 'inbox': screen = <Inbox bizId={b} data={data} unread={unread} />; break;
       case 'advisor': screen = <AdvisorChat bizId={b} data={data} />; break;
+      case 'website': screen = <WebsiteBuilder bizId={b} data={data} notify={notify} />; break;
       case 'services': screen = <Services notify={notify} data={data} unread={unread} />; break;
       case 'chat': screen = <ChatPage id={b} onRead={loadUnread} />; break;
       case 'admin': screen = profile.role === 'admin' ? <Admin notify={notify} /> : null; break;
@@ -133,15 +141,15 @@ export default function App() {
   }
 
   const [, section] = route.split('/');
-  const showNav = profile && profile.role !== 'agency' && !booting && !recovery && section !== 'admin';
+  const showNav = profile && profile.role !== 'agency' && !booting && !recovery && section !== 'admin' && section !== 's';
   const tabs = [['home', 'home', 'home'], ['products', 'grid', 'products'], ['orders', 'box', 'orders'], ['business', 'store', 'bizTab'], ['services', 'megaphone', 'services'], ['ideas', 'bulb', 'ideas']];
-  const active = ['product', 'make'].includes(section) ? 'products' : ['inbox', 'advisor'].includes(section) ? 'business' : section === 'idea' ? 'ideas' : section === 'chat' ? 'services'
+  const active = ['product', 'make'].includes(section) ? 'products' : ['inbox', 'advisor', 'website'].includes(section) ? 'business' : section === 'idea' ? 'ideas' : section === 'chat' ? 'services'
     : section === 'analytics' ? 'business' : section === 'earnings' ? 'home' : section || 'home';
 
   return (
     <AppCtx.Provider value={ctx}>
-      <div className="app">
-        {!api.isLive && <div className="demo-banner">{L.t('demoBanner')}</div>}
+      <div className={`app${section === 's' ? ' app-store' : ''}`}>
+        {!api.isLive && section !== 's' && <div className="demo-banner">{L.t('demoBanner')}</div>}
         <main className={showNav ? 'with-nav' : ''}>{screen}</main>
         {showNav && (
           <nav className="tabbar" aria-label="Main">

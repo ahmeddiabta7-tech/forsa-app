@@ -92,7 +92,7 @@ export function Home({ data }) {
       </div>
       <div className="section-head"><h2>{t('recentOrders')}</h2>{data.orders.length > 0 && <a href="#/orders">{t('seeAll')}</a>}</div>
       {data.orders.length === 0 ? (
-        <div className="card empty"><p>{t('noOrders')}</p><Button onClick={() => go('/products')}>{t('browse')}</Button></div>
+        <div className="card empty"><p>{t('noOrdersYet')}</p><Button onClick={() => go('/orders/new')}>+ {t('newOrder')}</Button><button type="button" className="link-btn small" onClick={() => go('/products')}>{t('browse')}</button></div>
       ) : (
         <div className="list">{data.orders.slice(0, 3).map((o) => <OrderRow key={o.id} o={o} />)}</div>
       )}
@@ -323,6 +323,56 @@ function OrderSheet({ open, onClose, product, price, qty, businesses, plan, onDo
   );
 }
 
+// ---------- New order from the Orders tab: business → one of ITS products → the 2-step order form ----------
+function NewOrder({ open, data, onClose, onDone }) {
+  const { t, lang, profile } = useApp();
+  const businesses = data.businesses || [];
+  const [bizId, setBizId] = useState('');
+  const [product, setProduct] = useState(null);
+  const { data: products } = useLoad(() => (open ? api.listProducts() : Promise.resolve(null)), [open]);
+  useEffect(() => { if (open) { setProduct(null); setBizId(businesses.length === 1 ? businesses[0].id : ''); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!open) return null;
+  const biz = businesses.find((b) => b.id === bizId);
+  const mine = biz ? (products || []).filter((p) => biz.product_ids.includes(p.id)) : [];
+  if (product && biz) {
+    return <OrderSheet open onClose={() => setProduct(null)} product={product} price={product.suggested_price} qty={1} businesses={[biz]} plan={planState(profile, data.orders)} onDone={onDone} />;
+  }
+  return (
+    <Sheet open onClose={onClose} title={t('newOrder')}>
+      {businesses.length === 0 ? (
+        <div className="stack"><p>{t('createBizFirst')}</p><Button block onClick={() => go('/business')}>{t('createBusiness')}</Button></div>
+      ) : (
+        <div className="stack">
+          {businesses.length > 1 && (
+            <>
+              <p className="small muted">{t('chooseBusiness')}</p>
+              <div className="chips" role="group" aria-label={t('chooseBusiness')}>
+                {businesses.map((b) => <button type="button" key={b.id} className="chip" aria-pressed={b.id === bizId} onClick={() => setBizId(b.id)}>{b.name}</button>)}
+              </div>
+            </>
+          )}
+          {biz && (!products ? <Spinner /> : mine.length === 0 ? (
+            <div className="card empty"><p>{t('addProductFirst')}</p><Button onClick={() => go('/products')}>{t('addProducts')}</Button></div>
+          ) : (
+            <>
+              <p className="small muted">{t('chooseProduct')}</p>
+              <div className="list">
+                {mine.map((p) => (
+                  <button type="button" key={p.id} className="order-row pick-product" onClick={() => setProduct(p)}>
+                    <img src={imgSrc(p.image_url)} alt="" />
+                    <div className="or-main"><b>{pname(p, lang)}</b><span className="muted small">{t('minIs', { p: money(p.min_price, lang) })}</span></div>
+                    <Icon name="chevron" size={16} />
+                  </button>
+                ))}
+              </div>
+            </>
+          ))}
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
 // ---------- Orders ----------
 // Where the order is now: Placed → Confirmed → Shipped → Delivered (returned / cancelled shown as an end note).
 const TRACK = ['pending', 'confirmed', 'shipped', 'delivered'];
@@ -347,7 +397,7 @@ export function OrderRow({ o, onClick }) {
       <img src={imgSrc(o.products?.image_url)} alt="" />
       <div className="or-main">
         <b>{pname(o.products, lang)}</b>
-        <span className="muted small">{t('orderNo', { n: o.order_no })} · {date(o.created_at, lang)}</span>
+        <span className="muted small">{t('orderNo', { n: o.order_no })} · {date(o.created_at, lang)}{o.source === 'website' ? ` · ${t('fromWebsite')}` : ''}</span>
       </div>
       <div className="or-side"><StatusPill status={o.status} /><span className={o.status === 'cancelled' || o.status === 'returned' ? 'muted small' : 'earn small'}>{o.status === 'delivered' && o.profit_locked ? <><Icon name="lock" size={12} /> </> : '+'}{money(orderProfit(o), lang)}</span></div>
     </button>
@@ -356,9 +406,10 @@ export function OrderRow({ o, onClick }) {
 
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 
-export function Orders({ data, openId, reload, notify }) {
+export function Orders({ data, openId, reload, notify, onOrdered }) {
   const { t, lang } = useApp();
   const [filter, setFilter] = useState('all');
+  const creating = openId === 'new';
   const [confirming, setConfirming] = useState(false);
   const list = data.orders.filter((o) => filter === 'all' || o.status === filter);
   const current = data.orders.find((o) => o.id === openId);
@@ -368,17 +419,21 @@ export function Orders({ data, openId, reload, notify }) {
   }
   return (
     <div className="screen">
-      <Header title={t('orders')} />
+      <Header title={t('orders')} right={<button type="button" className="btn btn-primary small new-order-btn" onClick={() => go('/orders/new')}>+ {t('newOrder')}</button>} />
       <div className="chips scroll" role="group">
         <button type="button" className="chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>{t('all')}</button>
         {STATUSES.map((s) => <button type="button" key={s} className="chip" aria-pressed={filter === s} onClick={() => setFilter(s)}>{t(`status_${s}`)}</button>)}
       </div>
-      {list.length === 0 ? <div className="card empty"><p>{t('noOrders')}</p><Button onClick={() => go('/products')}>{t('browse')}</Button></div>
+      {data.orders.length === 0 ? (
+        <div className="card empty"><p>{t('noOrdersYet')}</p><Button onClick={() => go('/orders/new')}>+ {t('newOrder')}</Button><button type="button" className="link-btn small" onClick={() => go('/products')}>{t('browse')}</button></div>
+      ) : list.length === 0 ? <div className="card empty"><p>{t('noOrdersFilter')}</p></div>
         : <div className="list">{list.map((o) => <OrderRow key={o.id} o={o} />)}</div>}
+      <NewOrder open={creating} data={data} onClose={() => go('/orders')} onDone={(o) => onOrdered?.(o)} />
       <Sheet open={Boolean(current)} onClose={() => { setConfirming(false); go('/orders'); }} title={current ? t('orderNo', { n: current.order_no }) : ''}>
         {current && (
           <div className="stack">
             <div className="row-between"><b>{pname(current.products, lang)} × {num(current.quantity, lang)}</b><StatusPill status={current.status} /></div>
+            {current.source === 'website' && <span className="src-tag"><Icon name="globe" size={13} /> {t('fromWebsite')}</span>}
             <OrderTracker o={current} />
             <dl className="kv">
               <dt>{t('yourPrice')}</dt><dd>{money(current.unit_price, lang)}</dd>

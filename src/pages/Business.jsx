@@ -4,6 +4,7 @@ import { useApp, PlanRules, Button, Field, Header, Spinner, useLoad, Sheet, Icon
 import { GOVERNORATES } from '../lib/i18n.js';
 import { Analytics } from './Grow.jsx';
 import { ThreadList } from './Make.jsx';
+import { WebsiteCard } from './Website.jsx';
 import * as api from '../lib/api.js';
 
 export const bizInitial = (b) => (b?.name || '?').trim().charAt(0).toUpperCase();
@@ -71,6 +72,8 @@ export function MyBusiness({ id, data, reload, notify, unread = {} }) {
         {current.description && <p className="small">{current.description}</p>}
         {page && <a className="biz-link" href={page} target="_blank" rel="noopener noreferrer"><Icon name="globe" size={16} />{t('visitPage')}</a>}
       </div>
+
+      <WebsiteCard key={current.id} business={current} data={data} notify={notify} />
 
       <div className="section-head"><h2>{t('myProducts')}</h2><button type="button" className="link-btn" onClick={() => go('/products')}>+ {t('addProducts')}</button></div>
       {!products ? <Spinner /> : mine.length === 0 ? (

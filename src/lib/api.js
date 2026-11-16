@@ -21,8 +21,9 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
-  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage'].forEach((k) => { if (!d[k]) d[k] = []; });
+  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites'].forEach((k) => { if (!d[k]) d[k] = []; });
   d.orders.forEach((o) => { if (o.status === 'on_hold') o.status = 'pending'; }); // old demo data
+  if (!d.settings) d.settings = { website_min_orders: 20 };
   if (!d.shipping_rates) d.shipping_rates = GOVERNORATES.map(([g]) => ({ governorate: g, fee: 70, active: true }));
   if (!d.manufacturers) d.manufacturers = DEMO_MANUFACTURERS.map((m, i) => ({ ...m, id: `m${i + 1}`, active: true, created_at: new Date().toISOString() }));
   return d;
@@ -177,17 +178,20 @@ export async function createOrder(o) {
     const id = getSession()?.user?.id;
     return db.insert('orders', { ...o, seller_id: id });
   }
+  return demoCreateOrder(o, meId());
+}
+function demoCreateOrder(o, sellerId) {
   const p = demo.products.find((x) => x.id === o.product_id);
   if (o.unit_price < p.min_price) throw new Error(`Selling price must be at least EGP ${p.min_price}`);
-  const biz = demo.businesses.find((b) => b.id === o.business_id && b.owner_id === meId());
+  const biz = demo.businesses.find((b) => b.id === o.business_id && b.owner_id === sellerId);
   if (!biz || !demo.business_products.some((bp) => bp.business_id === biz.id && bp.product_id === o.product_id)) throw new Error('Add this product to your business first');
   const rate = demo.shipping_rates.find((r) => r.governorate === o.governorate && r.active);
   if (!rate) throw new Error(`We don't deliver to ${o.governorate} yet`);
-  const me = meProfile();
+  const me = demo.profiles.find((x) => x.id === sellerId);
   const c = normPhone(o.customer_phone);
   const own = c.length === 10 && (c === normPhone(me.phone) || (['vodafone_cash', 'instapay'].includes(me.payout_method) && c === normPhone(me.payout_account)));
-  const row = { ...o, product_options: String(o.product_options || '').trim().slice(0, 200), shipping_fee: rate.fee, id: uid(), order_no: ++demo.seq, seller_id: meId(), wholesale_price: p.wholesale_price, status: 'pending',
-    fee_pct: p.owner_id ? 0 : PLAN.feePct, own_order: own, profit_locked: false, profit_released_at: null, created_at: now(), updated_at: now() };
+  const row = { ...o, product_options: String(o.product_options || '').trim().slice(0, 200), shipping_fee: rate.fee, id: uid(), order_no: ++demo.seq, seller_id: sellerId, wholesale_price: p.wholesale_price, status: 'pending',
+    fee_pct: p.owner_id ? 0 : PLAN.feePct, own_order: own, profit_locked: false, profit_released_at: null, source: o.source === 'website' ? 'website' : 'app', created_at: now(), updated_at: now() };
   demo.orders.push(row);
   demoSave(); return { ...row };
 }
@@ -613,6 +617,154 @@ export async function askAdvisor({ businessId = null, question = '', lang = 'en'
   if (u) u.used += 1; else demo.ai_usage.push({ user_id: meId(), day: aiToday(), used: 1 });
   demoSave();
   return { answer, remaining: left === AI_UNLIMITED ? left : left - 1, messages: rows };
+}
+
+
+// ---------- Seller websites (template websites, approved by Forsa) ----------
+export const WEBSITE_COLORS = { black: '#141414', green: '#1f6f50', blue: '#1f4e8c', red: '#b3261e', purple: '#5b3a8c', orange: '#c2571a', pink: '#b83d78', brown: '#6b4a2f' };
+export const WEBSITE_TEMPLATES = ['classic', 'bold', 'minimal'];
+const RESERVED_SLUGS = ['admin', 'forsa', 'api', 'app', 'www', 'store', 'shop', 'help', 'support', 'login', 'signup', 'home', 'orders', 'products', 'business', 's'];
+export const storeLink = (slug) => `${window.location.origin}${window.location.pathname}#/s/${slug}`;
+const fail = (m) => { throw new Error(m); };
+
+export async function websiteMinOrders() {
+  if (live) {
+    const r = await db.select('app_settings', 'select=value&key=eq.website_min_orders').catch(() => []);
+    return r?.[0]?.value ?? 20;
+  }
+  return demo.settings.website_min_orders;
+}
+export async function saveWebsiteMinOrders(n) {
+  const v = Math.max(0, Math.round(Number(n) || 0));
+  if (live) return db.update('app_settings', 'key=eq.website_min_orders', { value: v, updated_at: new Date().toISOString() });
+  demo.settings.website_min_orders = v; demoSave(); return v;
+}
+
+export async function myWebsites() {
+  if (live) return db.select('websites', `select=*&owner_id=eq.${getSession()?.user?.id}`);
+  return demo.websites.filter((w) => w.owner_id === meId()).map((w) => ({ ...w }));
+}
+
+const demoDelivered = (seller) => demo.orders.filter((o) => o.seller_id === seller && o.status === 'delivered' && !o.own_order).length;
+
+export async function requestWebsite(businessId) {
+  if (live) return db.rpc('request_website', { p_business: businessId });
+  const b = demo.businesses.find((x) => x.id === businessId && x.owner_id === meId()) || fail('This business is not yours');
+  const need = demo.settings.website_min_orders; const have = demoDelivered(meId());
+  if (have < need) fail(`You need ${need} delivered orders to request a website (you have ${have})`);
+  const w = demo.websites.find((x) => x.business_id === businessId);
+  if (w) {
+    if (w.status !== 'rejected') fail('You already have a website request for this business');
+    Object.assign(w, { status: 'requested', reason: '', requested_at: now(), decided_at: null, updated_at: now() }); demoSave(); return { ...w };
+  }
+  const x = { id: uid(), business_id: businessId, owner_id: meId(), status: 'requested', reason: '', published: false, slug: null, template: 'classic',
+    brand_name: b.name.slice(0, 60), about: '', color: 'black', logo_url: b.logo_url || '', cover_url: '', instagram: '', tiktok: '', facebook: '',
+    items: [], requested_at: now(), decided_at: null, updated_at: now() };
+  demo.websites.push(x); demoSave(); return { ...x };
+}
+
+export function cleanSlug(v) { return String(v || '').trim().toLowerCase(); }
+export function slugProblem(v) {
+  const s = cleanSlug(v);
+  if (!/^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/.test(s)) return 'format';
+  if (RESERVED_SLUGS.includes(s)) return 'reserved';
+  return '';
+}
+
+export async function saveWebsite(businessId, f) {
+  const payload = {
+    slug: cleanSlug(f.slug), template: f.template, brand_name: String(f.brand_name || '').trim(), about: String(f.about || '').trim(), color: f.color,
+    logo_url: f.logo_url || '', cover_url: f.cover_url || '', instagram: String(f.instagram || '').trim(), tiktok: String(f.tiktok || '').trim(),
+    facebook: String(f.facebook || '').trim(), items: (f.items || []).map((i) => ({ product_id: i.product_id, price: Math.round(Number(i.price)), featured: !!i.featured })),
+  };
+  if (live) return db.rpc('save_website', { p_business: businessId, p: payload });
+  const w = demo.websites.find((x) => x.business_id === businessId && x.owner_id === meId()) || fail('Website not found');
+  if (w.status !== 'approved') fail('Your website is not approved yet');
+  const sl = payload.slug || null;
+  if (sl && slugProblem(sl) === 'format') fail('Link name: 3-30 small English letters, numbers or dashes');
+  if (sl && slugProblem(sl) === 'reserved') fail('This link name is not allowed');
+  if (sl && demo.websites.some((x) => x.slug === sl && x.id !== w.id)) fail('This link name is taken');
+  const seen = new Set(); const items = [];
+  payload.items.forEach((i) => {
+    if (seen.has(i.product_id)) return;
+    const p = demo.products.find((x) => x.id === i.product_id && x.active);
+    if (!p || (p.owner_id && p.owner_id !== meId()) || !demo.business_products.some((bp) => bp.business_id === businessId && bp.product_id === i.product_id)) fail('Add this product to your business first');
+    if (!(i.price >= p.min_price)) fail(`Price for ${p.name_en} must be at least EGP ${p.min_price}`);
+    seen.add(i.product_id); items.push(i);
+  });
+  if (items.filter((i) => i.featured).length > 3) fail('You can feature up to 3 products');
+  const ok = sl && items.length && payload.brand_name.length >= 2;
+  Object.assign(w, { ...payload, slug: sl, brand_name: payload.brand_name.slice(0, 60), about: payload.about.slice(0, 400), items, published: ok ? w.published : false, updated_at: now() });
+  demoSave(); return { ...w };
+}
+
+export async function publishWebsite(businessId, on) {
+  if (live) return db.rpc('publish_website', { p_business: businessId, p_on: on });
+  const w = demo.websites.find((x) => x.business_id === businessId && x.owner_id === meId()) || fail('Website not found');
+  if (on) {
+    if (w.status !== 'approved') fail('Your website is not approved yet');
+    if (!w.slug) fail('Choose a link name first');
+    if ((w.brand_name || '').trim().length < 2) fail('Add your brand name first');
+    if (!w.items.length) fail('Add at least one product first');
+  }
+  w.published = on; w.updated_at = now(); demoSave(); return { ...w };
+}
+
+export async function adminWebsites() {
+  if (live) return db.rpc('admin_websites');
+  return demo.websites.map((w) => {
+    const b = demo.businesses.find((x) => x.id === w.business_id) || {}; const pr = demo.profiles.find((x) => x.id === w.owner_id) || {};
+    const os = demo.orders.filter((o) => o.seller_id === w.owner_id);
+    return { id: w.id, business_id: w.business_id, business_name: b.name, owner_name: pr.full_name, status: w.status, reason: w.reason, published: w.published, slug: w.slug,
+      requested_at: w.requested_at, decided_at: w.decided_at, delivered: demoDelivered(w.owner_id), returned: os.filter((o) => o.status === 'returned').length,
+      cancelled: os.filter((o) => o.status === 'cancelled').length, total: os.length, days_active: Math.max(0, Math.floor((Date.now() - Date.parse(pr.created_at || now())) / 864e5)) };
+  }).sort((a, b) => (b.status === 'requested') - (a.status === 'requested') || (b.requested_at || '').localeCompare(a.requested_at || ''));
+}
+
+export async function adminDecideWebsite(id, status, reason = '') {
+  if (live) return db.rpc('admin_decide_website', { p_id: id, p_status: status, p_reason: reason });
+  const w = demo.websites.find((x) => x.id === id) || fail('Website not found');
+  Object.assign(w, { status, reason: String(reason || '').trim().slice(0, 300), decided_at: now(), updated_at: now(), published: status === 'approved' ? w.published : false });
+  demoSave(); return { ...w };
+}
+
+// Public store page (works without login). Only safe fields: no factory codes, no wholesale prices.
+export async function publicStore(slug) {
+  if (live) return db.rpc('public_store', { p_slug: slug });
+  const w = demo.websites.find((x) => x.slug === cleanSlug(slug) && x.status === 'approved' && x.published);
+  if (!w) return null;
+  return storeView(w);
+}
+// Builds the public view of a website from its settings (also used for the live preview in the builder).
+export function storeView(w, products = live ? [] : demo.products, shipping = live ? [] : demo.shipping_rates) {
+  const items = (w.items || []).map((i) => {
+    const p = products.find((x) => x.id === i.product_id && x.active !== false);
+    if (!p) return null;
+    return { id: p.id, name_en: p.name_en, name_ar: p.name_ar, description_en: p.description_en, description_ar: p.description_ar, image_url: p.image_url, category: p.category,
+      price: Math.max(Number(i.price) || 0, p.min_price), featured: !!i.featured };
+  }).filter(Boolean);
+  return { slug: w.slug, template: w.template, brand_name: w.brand_name, about: w.about, color: w.color, logo_url: w.logo_url, cover_url: w.cover_url,
+    instagram: w.instagram, tiktok: w.tiktok, facebook: w.facebook, items,
+    shipping: shipping.filter((r) => r.active !== false).map((r) => ({ governorate: r.governorate, fee: r.fee })) };
+}
+
+export async function placeStoreOrder({ slug, product_id, quantity, name, phone, governorate, address, options = '', hp = '' }) {
+  if (live) return db.rpc('place_store_order', { p_slug: slug, p_product: product_id, p_qty: quantity, p_name: name, p_phone: phone, p_governorate: governorate, p_address: address, p_options: options, p_hp: hp });
+  if (hp) fail('Invalid request');
+  const w = demo.websites.find((x) => x.slug === cleanSlug(slug) && x.status === 'approved' && x.published) || fail('This store is not available');
+  const it = w.items.find((i) => i.product_id === product_id) || fail('This product is not available');
+  const p = demo.products.find((x) => x.id === product_id && x.active) || fail('This product is not available');
+  if (!(quantity >= 1 && quantity <= 10)) fail('Quantity must be 1 to 10');
+  if (String(name || '').trim().length < 2) fail('Enter your name');
+  if (String(address || '').trim().length < 5) fail('Enter your full address');
+  const c = normPhone(phone);
+  if (!/^1[0125]\d{8}$/.test(c)) fail('Enter a valid Egyptian mobile number');
+  const recent = demo.orders.filter((o) => o.business_id === w.business_id && o.source === 'website');
+  if (recent.filter((o) => normPhone(o.customer_phone) === c && Date.now() - Date.parse(o.created_at) < 864e5).length >= 3) fail('Too many orders from this number today. Please try again tomorrow.');
+  if (recent.filter((o) => Date.now() - Date.parse(o.created_at) < 36e5).length >= 30) fail('This store is busy right now. Please try again later.');
+  const o = demoCreateOrder({ product_id, business_id: w.business_id, quantity, unit_price: Math.max(it.price, p.min_price), customer_name: String(name).trim().slice(0, 80),
+    customer_phone: `0${c}`, governorate, address: String(address).trim().slice(0, 300), product_options: options, notes: '', source: 'website' }, w.owner_id);
+  return o.order_no;
 }
 
 // ---------- helpers ----------

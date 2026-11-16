@@ -2,6 +2,27 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.12 — Nov 2026 (New order button + seller websites)
+- **Orders tab:** "+ New order" at the top. Choose the business (if more than one) → choose one of the products added to
+  THAT business (never the whole catalog) → the usual 2-step order form → the order opens with its tracker.
+  Empty business: "Add a product to this business first". Empty Orders/Home: "No orders yet. Add your first order."
+- **Seller websites** (one branded website per business, made from a template; nothing is published to GitHub per seller —
+  each website is one row in the database shown by one shared store page):
+  - Unlocks after **20 delivered orders** (orders to the seller's own number don't count). Admin can change the number
+    in Admin → Websites. The seller taps "Request my website"; Forsa accepts / rejects (with reason) / pauses (with reason).
+  - Builder (My Business → My website): template (Classic, Bold, Minimal) with live preview, brand name, link name,
+    logo, cover photo, colour (8), About us, Instagram / TikTok / Facebook, which products to show + price (never below
+    the minimum) + order + up to 3 featured. Save, Save & publish, Unpublish. Share card: copy link, WhatsApp, open.
+  - Public store page `#/s/<link name>` (no login): brand, cover, about, social links, featured + all products, product
+    sheet, order form (name, phone, governorate with shipping fee, address, product details, quantity), "Cash on
+    delivery all over Egypt", EN/AR, "Powered by Forsa". No factory names or wholesale prices.
+  - Orders from the website arrive as "pending" with "From your website". The price always comes from the database.
+    Limits: 3 orders per phone per store per day, 30 per store per hour, hidden bot field. The 3-pieces rule applies as usual.
+- Database: `supabase/v1_11.sql` (app_settings, websites, orders.source, request/save/publish/admin functions,
+  public_store, place_store_order).
+- Tests: database tests (approval, limits, prices, privacy, anon access), flow tests on iPhone SE, iPhone 14 Pro Max,
+  Galaxy S8, Galaxy S5 (124 checks), regression sweep (180 screen checks), English + Arabic — all passing.
+
 ## Version 1.11 — Nov 2026 (smarter AI advisor)
 - The advisor now checks the seller's account with every answer and points out problems with the fix: orders waiting
   for confirmation over 2 days, shipped over 7 days, many returns or cancellations, a product with many returns,

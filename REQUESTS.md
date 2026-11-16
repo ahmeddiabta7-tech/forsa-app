@@ -97,3 +97,6 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
   Before building: check Egyptian rules for raising money from the public (FRA crowdfunding rules), decide Forsa's role
   (only connecting investors and founders, or handling the money), and get the owner's permission before showing any
   numbers or idea details (protect ideas from being copied).
+- Seller websites, next steps (after v1.12): own domain per seller (nourstore.com); nice link previews on WhatsApp /
+  Facebook (needs Forsa's own domain + hosting — Ahmed will buy the domain later); "Connect your outside website"
+  (Wuilt, Shopify, WooCommerce; EasyOrders only if it can send orders automatically) with step-by-step guides.

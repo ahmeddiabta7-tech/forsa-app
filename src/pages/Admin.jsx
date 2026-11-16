@@ -4,7 +4,7 @@ import { Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, 
 import { CATEGORIES, GOVERNORATES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
-const TABS = ['Orders', 'Products', 'Shipping', 'Manufacturing', 'Sellers', 'Ideas', 'Services', 'Partners'];
+const TABS = ['Orders', 'Products', 'Shipping', 'Websites', 'Manufacturing', 'Sellers', 'Ideas', 'Services', 'Partners'];
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 const PAY_METHODS = { instapay: 'InstaPay', vodafone_cash: 'Vodafone Cash', bank: 'Bank account' };
 
@@ -19,6 +19,7 @@ export function Admin({ notify }) {
       {tab === 'Orders' && <AdminOrders notify={notify} />}
       {tab === 'Products' && <AdminProducts notify={notify} />}
       {tab === 'Shipping' && <AdminShipping notify={notify} />}
+      {tab === 'Websites' && <AdminWebsites notify={notify} />}
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
       {tab === 'Ideas' && <AdminIdeas notify={notify} />}
       {tab === 'Services' && <AdminServices notify={notify} />}
@@ -48,7 +49,7 @@ function AdminOrders({ notify }) {
         <div className="list">
           {list.map((o) => (
             <div key={o.id} className="card admin-order">
-              <div className="row-between"><b>#{o.order_no} · {o.products?.name_en} × {o.quantity}</b><span className={`pill pill-${o.status}`}>{o.status}</span></div>
+              <div className="row-between"><b>#{o.order_no} · {o.products?.name_en} × {o.quantity}{o.source === 'website' ? ' · from website' : ''}</b><span className={`pill pill-${o.status}`}>{o.status}</span></div>
               <p className="small">Customer: <b>{o.customer_name}</b> · <span dir="ltr">{o.customer_phone}</span><br />{o.address}, {o.governorate}{o.notes ? ` · Note: ${o.notes}` : ''}</p>
               {o.product_options && <p className="small"><b>Product details:</b> {o.product_options}</p>}
               <p className="small muted">Seller: {o.profiles?.full_name} · {o.profiles?.phone} · Factory {o.products?.factory_code} · {date(o.created_at, 'en')}</p>
@@ -176,6 +177,61 @@ function ProductForm({ product, onClose, onSaved }) {
         </div>
       )}
     </Sheet>
+  );
+}
+
+// Seller websites: requests to accept / reject, live websites to pause, and the delivered-orders condition.
+const WEB_STATUS = { requested: 'Waiting', approved: 'Accepted', rejected: 'Rejected', paused: 'Paused' };
+function AdminWebsites({ notify }) {
+  const { loading, data, error, reload } = useLoad(() => api.adminWebsites(), []);
+  const min = useLoad(() => api.websiteMinOrders(), []);
+  const [minEdit, setMinEdit] = useState('');
+  const [reasons, setReasons] = useState({});
+  const [busy, setBusy] = useState('');
+  async function decide(w, status) {
+    if ((status === 'rejected' || status === 'paused') && !(reasons[w.id] || '').trim()) { notify('Write a short reason first'); return; }
+    setBusy(w.id);
+    try { await api.adminDecideWebsite(w.id, status, reasons[w.id] || ''); notify(`${w.business_name}: ${WEB_STATUS[status]}`); setReasons((r) => ({ ...r, [w.id]: '' })); reload(); }
+    catch (e) { notify(e.message); } finally { setBusy(''); }
+  }
+  async function saveMin() {
+    const n = Number(minEdit);
+    if (!Number.isFinite(n) || n < 0) { notify('Enter a number'); return; }
+    try { await api.saveWebsiteMinOrders(n); notify('Saved'); setMinEdit(''); min.reload(); } catch (e) { notify(e.message); }
+  }
+  const pct = (a, b) => (b ? `${Math.round((a / b) * 100)}%` : '0%');
+  return (
+    <div className="stack">
+      <div className="card stack">
+        <b>Condition to request a website</b>
+        <p className="small muted">A seller can request a website after this many delivered orders (orders to their own number don't count). You still accept each request.</p>
+        <div className="row" style={{ alignItems: 'flex-end' }}>
+          <Field id="aw-min" label={`Delivered orders (now ${min.data ?? '…'})`}><input id="aw-min" type="number" inputMode="numeric" min="0" value={minEdit} placeholder={String(min.data ?? 20)} onChange={(e) => setMinEdit(e.target.value)} /></Field>
+          <Button small onClick={saveMin} disabled={minEdit === ''}>Save</Button>
+        </div>
+      </div>
+      {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : (data || []).length === 0 ? <div className="card empty"><p>No website requests yet.</p></div> : (
+        <div className="list">
+          {data.map((w) => (
+            <div key={w.id} className="card stack admin-web">
+              <div className="row-between"><b>{w.business_name}</b><span className={`pill pill-${w.status === 'approved' ? 'delivered' : w.status === 'requested' ? 'pending' : 'cancelled'}`}>{WEB_STATUS[w.status]}{w.status === 'approved' ? (w.published ? ' · live' : ' · draft') : ''}</span></div>
+              <span className="small muted">{w.owner_name} · requested {date(w.requested_at, 'en')}{w.slug ? ` · /s/${w.slug}` : ''}</span>
+              <p className="small">Delivered <b>{w.delivered}</b> · Returned {w.returned} ({pct(w.returned, w.total)}) · Cancelled {w.cancelled} ({pct(w.cancelled, w.total)}) · All orders {w.total} · Active {w.days_active} days</p>
+              {w.reason && <p className="small muted">Reason: {w.reason}</p>}
+              {w.status === 'approved' && w.published && w.slug && <a className="small" href={`#/s/${w.slug}`} target="_blank" rel="noopener noreferrer">Open website</a>}
+              {w.status !== 'rejected' && (
+                <Field id={`aw-r-${w.id}`} label="Reason (needed to reject or pause)"><input id={`aw-r-${w.id}`} maxLength={300} value={reasons[w.id] || ''} onChange={(e) => setReasons((r) => ({ ...r, [w.id]: e.target.value }))} /></Field>
+              )}
+              <div className="row">
+                {w.status !== 'approved' && w.status !== 'rejected' && <Button small onClick={() => decide(w, 'approved')} disabled={busy === w.id}>{w.status === 'paused' ? 'Un-pause' : 'Accept'}</Button>}
+                {w.status === 'requested' && <Button small variant="ghost" onClick={() => decide(w, 'rejected')} disabled={busy === w.id}>Reject</Button>}
+                {w.status === 'approved' && <Button small variant="danger" onClick={() => decide(w, 'paused')} disabled={busy === w.id}>Pause</Button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
