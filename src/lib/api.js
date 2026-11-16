@@ -651,7 +651,7 @@ export async function requestWebsite(businessId) {
   if (live) return db.rpc('request_website', { p_business: businessId });
   const b = demo.businesses.find((x) => x.id === businessId && x.owner_id === meId()) || fail('This business is not yours');
   const need = demo.settings.website_min_orders; const have = demoDelivered(meId());
-  if (have < need) fail(`You need ${need} delivered orders to request a website (you have ${have})`);
+  if (have < need && meProfile()?.role !== 'admin') fail(`You need ${need} delivered orders to request a website (you have ${have})`);
   const w = demo.websites.find((x) => x.business_id === businessId);
   if (w) {
     if (w.status !== 'rejected') fail('You already have a website request for this business');

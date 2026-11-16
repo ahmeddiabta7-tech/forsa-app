@@ -42,7 +42,7 @@ function ShareCard({ slug, brand, notify }) {
 
 // ---------- Card inside My Business ----------
 export function WebsiteCard({ business, data, notify }) {
-  const { t, lang } = useApp();
+  const { t, lang, profile } = useApp();
   const sites = useLoad(() => api.myWebsites(), [business.id]);
   const min = useLoad(() => api.websiteMinOrders(), []);
   const [busy, setBusy] = useState(false);
@@ -50,7 +50,7 @@ export function WebsiteCard({ business, data, notify }) {
   const w = (sites.data || []).find((x) => x.business_id === business.id);
   const need = min.data ?? 20;
   const have = delivered(data.orders);
-  const eligible = have >= need;
+  const eligible = have >= need || profile?.role === 'admin'; // Forsa team can test without the condition
   async function request() {
     setBusy(true);
     try { await api.requestWebsite(business.id); notify(t('webRequested')); sites.reload(); } catch (e) { notify(e.message); } finally { setBusy(false); }

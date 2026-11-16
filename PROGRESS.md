@@ -2,6 +2,12 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.12.1 — Nov 2026 (cleaner business page)
+- My Business: removed the Messages box (Messages is already at the top, next to the account icon).
+- The "My website" box moved down: after the AI advisor and just before Smart tips.
+- Admin accounts (Ahmed) can request a website without the 20 delivered orders, to test the feature
+  (`supabase/v1_12.sql`). Every other seller still needs 20.
+
 ## Version 1.12 — Nov 2026 (New order button + seller websites)
 - **Orders tab:** "+ New order" at the top. Choose the business (if more than one) → choose one of the products added to
   THAT business (never the whole catalog) → the usual 2-step order form → the order opens with its tracker.

@@ -21,7 +21,7 @@ const PERIODS = ['week', 'month', 'all'];
 
 // ---------- Analytics ----------
 // embedded + businessId: shown inside My Business, limited to that business.
-export function Analytics({ data, reload, notify, embedded, businessId }) {
+export function Analytics({ data, reload, notify, embedded, businessId, beforeTips }) {
   const { t, lang, profile } = useApp();
   const [period, setPeriod] = useState('month');
   const [tips, setTips] = useState(null);
@@ -120,6 +120,7 @@ export function Analytics({ data, reload, notify, embedded, businessId }) {
       </div>
 
       {profile.role !== 'agency' && <AdvisorBox businessId={businessId || null} />}
+      {beforeTips}
 
       <div className="section-head"><h2>{t('smartTips')}</h2></div>
       <p className="muted small">{t('tipsNote')}</p>

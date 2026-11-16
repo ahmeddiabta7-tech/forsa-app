@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 import { useApp, PlanRules, Button, Field, Header, Spinner, useLoad, Sheet, Icon, go, money, pname, imgSrc, feeFor } from '../core.jsx';
 import { GOVERNORATES } from '../lib/i18n.js';
 import { Analytics } from './Grow.jsx';
-import { ThreadList } from './Make.jsx';
 import { WebsiteCard } from './Website.jsx';
 import * as api from '../lib/api.js';
 
@@ -29,7 +28,6 @@ export function MyBusiness({ id, data, reload, notify, unread = {} }) {
   const [form, setForm] = useState(null);
   const current = businesses.find((b) => b.id === id) || businesses[0];
   const { data: products } = useLoad(() => api.listProducts({ all: false }), []);
-  const threads = useLoad(() => api.myRequests({ all: true }), []);
 
   if (businesses.length === 0) {
     return (
@@ -73,8 +71,6 @@ export function MyBusiness({ id, data, reload, notify, unread = {} }) {
         {page && <a className="biz-link" href={page} target="_blank" rel="noopener noreferrer"><Icon name="globe" size={16} />{t('visitPage')}</a>}
       </div>
 
-      <WebsiteCard key={current.id} business={current} data={data} notify={notify} />
-
       <div className="section-head"><h2>{t('myProducts')}</h2><button type="button" className="link-btn" onClick={() => go('/products')}>+ {t('addProducts')}</button></div>
       {!products ? <Spinner /> : mine.length === 0 ? (
         <div className="card empty"><p>{t('noBizProducts')}</p><Button onClick={() => go('/products')}>{t('addProducts')}</Button></div>
@@ -92,11 +88,9 @@ export function MyBusiness({ id, data, reload, notify, unread = {} }) {
         </div>
       )}
 
-      <div className="section-head"><h2>{t('messages')}</h2><button type="button" className="link-btn" onClick={() => go(`/inbox/${current.id}`)}>{t('allMessages')}</button></div>
-      {threads.loading ? <Spinner /> : <ThreadList threads={(threads.data || []).filter((r) => r.business_id === current.id)} unread={unread} limit={3} />}
-
       <div className="section-head"><h2>{t('analytics')}</h2></div>
-      <Analytics data={data} reload={reload} notify={notify} embedded businessId={current.id} />
+      <Analytics data={data} reload={reload} notify={notify} embedded businessId={current.id}
+        beforeTips={<WebsiteCard key={current.id} business={current} data={data} notify={notify} />} />
 
       <BusinessForm business={form} onClose={() => setForm(null)}
         onSaved={(b, created) => { setForm(null); notify(t(created ? 'bizCreated' : 'bizSaved')); reload(); if (created) go(`/business/${b.id}`); }}
