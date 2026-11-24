@@ -618,3 +618,17 @@ code.web-link { display: block; max-width: 100%; font-size: 13px; background: va
 .row.two .field { min-width: 0; }
 .step-head { display: flex; align-items: center; gap: 10px; }
 .step-head h3 { min-width: 0; }
+
+/* v1.14 · Seller's own products + own name/photo on the website */
+.own-empty .btn { width: max-content; }
+.own-row { text-align: start; }
+.own-row .pill { flex: none; }
+.own-photo { display: flex; align-items: center; gap: 12px; }
+.own-photo .field { flex: 1; min-width: 0; }
+.own-photo-img { width: 72px; height: 72px; border-radius: 12px; background: var(--surface-2); display: grid; place-items: center; overflow: hidden; flex: none; color: var(--muted); }
+.own-photo-img img { width: 100%; height: 100%; object-fit: cover; }
+.own-steps { padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+.item-look { border-top: 1px dashed var(--line-2); padding-top: 8px; }
+.item-look-open { align-self: flex-start; }
+.sold-out { display: inline-block; font-size: 12px; font-weight: 700; color: #b3261e; }
+.sold-out.big { font-size: 15px; text-align: center; padding: 10px; background: #fdecea; border-radius: 10px; }

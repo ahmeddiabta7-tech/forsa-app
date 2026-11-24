@@ -4,6 +4,7 @@ import { useApp, PlanRules, Button, Field, Header, Spinner, useLoad, Sheet, Icon
 import { GOVERNORATES } from '../lib/i18n.js';
 import { Analytics } from './Grow.jsx';
 import { WebsiteCard } from './Website.jsx';
+import { OwnProducts } from './OwnProducts.jsx';
 import * as api from '../lib/api.js';
 
 export const bizInitial = (b) => (b?.name || '?').trim().charAt(0).toUpperCase();
@@ -44,7 +45,7 @@ export function MyBusiness({ id, data, reload, notify, unread = {} }) {
     );
   }
 
-  const mine = (products || []).filter((p) => current.product_ids.includes(p.id));
+  const mine = (products || []).filter((p) => current.product_ids.includes(p.id) && !p.seller_made);
   async function remove(p) {
     try { await api.removeFromBusiness(current.id, p.id); notify(t('removedToast')); reload(); } catch (e) { notify(e.message); }
   }
@@ -87,6 +88,8 @@ export function MyBusiness({ id, data, reload, notify, unread = {} }) {
           ))}
         </div>
       )}
+
+      <OwnProducts key={`own-${current.id}`} business={current} notify={notify} onChanged={reload} />
 
       <div className="section-head"><h2>{t('analytics')}</h2></div>
       <Analytics data={data} reload={reload} notify={notify} embedded businessId={current.id}

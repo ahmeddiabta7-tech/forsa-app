@@ -181,8 +181,10 @@ export async function createOrder(o) {
   return demoCreateOrder(o, meId());
 }
 function demoCreateOrder(o, sellerId) {
-  const p = demo.products.find((x) => x.id === o.product_id);
+  const p = demo.products.find((x) => x.id === o.product_id && x.active);
+  if (!p) throw new Error('This product is not available');
   if (o.unit_price < p.min_price) throw new Error(`Selling price must be at least EGP ${p.min_price}`);
+  if (p.seller_made && (p.stock || 0) < (Number(o.quantity) || 1)) throw new Error(`Not enough pieces at Forsa for this order (${p.stock || 0} left). Send more pieces to Forsa.`);
   const biz = demo.businesses.find((b) => b.id === o.business_id && b.owner_id === sellerId);
   if (!biz || !demo.business_products.some((bp) => bp.business_id === biz.id && bp.product_id === o.product_id)) throw new Error('Add this product to your business first');
   const rate = demo.shipping_rates.find((r) => r.governorate === o.governorate && r.active);
@@ -191,7 +193,8 @@ function demoCreateOrder(o, sellerId) {
   const c = normPhone(o.customer_phone);
   const own = c.length === 10 && (c === normPhone(me.phone) || (['vodafone_cash', 'instapay'].includes(me.payout_method) && c === normPhone(me.payout_account)));
   const row = { ...o, product_options: String(o.product_options || '').trim().slice(0, 200), shipping_fee: rate.fee, id: uid(), order_no: ++demo.seq, seller_id: sellerId, wholesale_price: p.wholesale_price, status: 'pending',
-    fee_pct: p.owner_id ? 0 : PLAN.feePct, own_order: own, profit_locked: false, profit_released_at: null, source: ['website', 'shopify'].includes(o.source) ? o.source : 'app', created_at: now(), updated_at: now() };
+    fee_pct: p.owner_id && !p.seller_made ? 0 : PLAN.feePct, seller_stock: !!p.seller_made, own_order: own, profit_locked: false, profit_released_at: null, source: ['website', 'shopify'].includes(o.source) ? o.source : 'app', created_at: now(), updated_at: now() };
+  if (p.seller_made) p.stock -= Number(o.quantity) || 1;
   demo.orders.push(row);
   demoSave(); return { ...row };
 }
@@ -212,6 +215,7 @@ export async function cancelOrder(id) {
   if (live) return db.update('orders', `id=eq.${id}`, { status: 'cancelled' });
   const o = demo.orders.find((x) => x.id === id);
   if (o.status !== 'pending') throw new Error('Only pending orders can be cancelled');
+  demoStockBack(o, 'cancelled');
   o.status = 'cancelled'; o.updated_at = now(); demoSave(); return o;
 }
 
@@ -289,6 +293,7 @@ export async function setOrderStatus(id, status) {
     o.profit_locked = !product.owner_id && !unlocked;
     o.profit_released_at = o.profit_locked ? null : now();
   }
+  demoStockBack(o, status);
   o.status = status; o.updated_at = now();
   if (status === 'delivered' && !wasDelivered && o.profit_locked) {
     const counted = demo.orders.filter((x) => x.seller_id === o.seller_id && x.status === 'delivered' && x.profit_locked && !x.own_order).reduce((s, x) => s + (Number(x.quantity) || 1), 0);
@@ -711,7 +716,8 @@ export async function saveWebsite(businessId, f) {
   const payload = {
     slug: cleanSlug(f.slug), template: f.template, style: cleanStyle(f.style), brand_name: String(f.brand_name || '').trim(), about: String(f.about || '').trim(), color: String(f.color || 'black').toLowerCase(),
     logo_url: f.logo_url || '', cover_url: f.cover_url || '', instagram: String(f.instagram || '').trim(), tiktok: String(f.tiktok || '').trim(),
-    facebook: String(f.facebook || '').trim(), items: (f.items || []).map((i) => ({ product_id: i.product_id, price: Math.round(Number(i.price)), featured: !!i.featured })),
+    facebook: String(f.facebook || '').trim(), items: (f.items || []).map((i) => ({ product_id: i.product_id, price: Math.round(Number(i.price)), featured: !!i.featured,
+      ...(String(i.name || '').trim() ? { name: String(i.name).trim().slice(0, 80) } : {}), ...(i.image_url ? { image_url: i.image_url } : {}) })),
   };
   if (live) return db.rpc('save_website', { p_business: businessId, p: payload });
   const w = demo.websites.find((x) => x.business_id === businessId && x.owner_id === meId()) || fail('Website not found');
@@ -778,8 +784,8 @@ export function storeView(w, products = live ? [] : demo.products, shipping = li
   const items = (w.items || []).map((i) => {
     const p = products.find((x) => x.id === i.product_id && x.active !== false);
     if (!p) return null;
-    return { id: p.id, name_en: p.name_en, name_ar: p.name_ar, description_en: p.description_en, description_ar: p.description_ar, image_url: p.image_url, category: p.category,
-      price: Math.max(Number(i.price) || 0, p.min_price), featured: !!i.featured };
+    return { id: p.id, name_en: i.name || p.name_en, name_ar: i.name || p.name_ar, description_en: p.description_en, description_ar: p.description_ar, image_url: i.image_url || p.image_url, category: p.category,
+      price: Math.max(Number(i.price) || 0, p.min_price), featured: !!i.featured, sold_out: !!p.seller_made && (p.stock || 0) < 1 };
   }).filter(Boolean);
   return { slug: w.slug, template: w.template, style: w.style || {}, brand_name: w.brand_name, about: w.about, color: w.color, logo_url: w.logo_url, cover_url: w.cover_url,
     instagram: w.instagram, tiktok: w.tiktok, facebook: w.facebook, items,
@@ -876,6 +882,65 @@ export async function dismissExternalOrder(id) {
   e.status = 'dismissed'; demoSave(); return null;
 }
 const latinPhone = (v) => String(v || '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[\s-]/g, '');
+
+
+// ---------- Seller's own products ("Add my own product") ----------
+// The seller made it himself; Forsa approves it, stores his pieces and ships each order. Forsa keeps 10% of the
+// profit; the seller gets the rest + his cost back. Private to the seller; never under the 3-pieces lock.
+function demoStockBack(o, status) {
+  if (!o.seller_stock) return;
+  const p = demo.products.find((x) => x.id === o.product_id); if (!p) return;
+  const out = (s) => ['cancelled', 'returned'].includes(s);
+  if (out(status) && !out(o.status)) p.stock += Number(o.quantity) || 1;
+  else if (!out(status) && out(o.status)) p.stock -= Number(o.quantity) || 1;
+}
+export async function mySellerProducts() {
+  if (live) return db.select('products', `select=*&owner_id=eq.${getSession()?.user?.id}&seller_made=eq.true&order=created_at.desc`);
+  return demo.products.filter((p) => p.owner_id === meId() && p.seller_made).map((p) => ({ ...p }));
+}
+function checkOwnProduct(f) {
+  const name = String(f.name || '').trim(); const cost = Math.round(Number(f.cost)); const price = Math.round(Number(f.price));
+  if (name.length < 2) fail('Write the product name');
+  if (!f.image_url) fail('Add a photo of the product');
+  if (!(cost >= 1)) fail('Enter your cost for one piece');
+  if (!(price >= cost)) fail('Selling price must be at least your cost');
+  return { name: name.slice(0, 80), cost, price, description: String(f.description || '').trim().slice(0, 600), category: f.category || 'Other', image_url: f.image_url };
+}
+export async function createSellerProduct(businessId, f) {
+  const c = checkOwnProduct(f);
+  if (live) return db.rpc('create_seller_product', { p_business: businessId, p: c });
+  if (!demo.businesses.some((b) => b.id === businessId && b.owner_id === meId())) fail('This business is not yours');
+  const p = { id: uid(), name_en: c.name, name_ar: c.name, description_en: c.description, description_ar: c.description, category: c.category, factory_code: 'SELLER', region: '',
+    quality_score: null, wholesale_price: c.cost, min_price: c.cost, suggested_price: c.price, ship_days: 3, image_url: c.image_url, stock: 0, active: false,
+    owner_id: meId(), seller_made: true, review_status: 'pending', review_reason: '', created_at: now() };
+  demo.products.push(p); demo.business_products.push({ business_id: businessId, product_id: p.id, created_at: now() }); demoSave(); return { ...p };
+}
+export async function updateSellerProduct(id, f) {
+  const c = checkOwnProduct(f);
+  if (live) return db.rpc('update_seller_product', { p_id: id, p: c });
+  const p = demo.products.find((x) => x.id === id && x.owner_id === meId() && x.seller_made) || fail('Product not found');
+  const changed = c.name !== p.name_en || c.image_url !== p.image_url || c.cost !== p.wholesale_price || c.description !== (p.description_en || '');
+  Object.assign(p, { name_en: c.name, name_ar: c.name, description_en: c.description, description_ar: c.description, category: c.category, image_url: c.image_url,
+    wholesale_price: c.cost, min_price: c.cost, suggested_price: c.price });
+  if (changed) Object.assign(p, { review_status: 'pending', review_reason: '', active: false });
+  demoSave(); return { ...p };
+}
+export async function adminSellerProducts() {
+  if (live) return db.select('products', 'select=*,profiles(full_name)&seller_made=eq.true&order=created_at.desc');
+  return demo.products.filter((p) => p.seller_made).map((p) => ({ ...p, profiles: { full_name: demo.profiles.find((x) => x.id === p.owner_id)?.full_name } }))
+    .sort((a, b) => (b.review_status === 'pending') - (a.review_status === 'pending'));
+}
+export async function adminReviewProduct(id, status, reason = '') {
+  if (live) return db.rpc('admin_review_product', { p_id: id, p_status: status, p_reason: reason });
+  const p = demo.products.find((x) => x.id === id && x.seller_made) || fail('Product not found');
+  Object.assign(p, { review_status: status, review_reason: String(reason || '').trim().slice(0, 300), active: status === 'approved' }); demoSave(); return { ...p };
+}
+export async function adminSetStock(id, stock) {
+  const n = Math.round(Number(stock));
+  if (!(n >= 0 && n <= 100000)) fail('Invalid number of pieces');
+  if (live) return db.rpc('admin_set_stock', { p_id: id, p_stock: n });
+  const p = demo.products.find((x) => x.id === id) || fail('Product not found'); p.stock = n; demoSave(); return { ...p };
+}
 
 // ---------- helpers ----------
 function demoBiz(id) { const b = demo.businesses.find((x) => x.id === id); return b ? { name: b.name, page_url: b.page_url, category: b.category, city: b.city, description: b.description, logo_url: b.logo_url } : null; }

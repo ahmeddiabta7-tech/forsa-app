@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   useApp, PlanRules, Button, Field, Header, StatusPill, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, AccountButton, MiniBars, greeting,
-  money, num, date, pname, imgSrc, orderProfit, orderGross, orderFee, feeFor, planState, earningsSummary, latinDigits,
+  money, num, date, pname, imgSrc, orderProfit, orderGross, orderFee, orderCostBack, orderPayout, feeFor, planState, earningsSummary, latinDigits,
 } from '../core.jsx';
 import { computeStats, inPeriod, expensesIn, profitSeries, getAdvice } from '../lib/advisor.js';
 import { tipText } from './Grow.jsx';
@@ -400,7 +400,7 @@ export function OrderRow({ o, onClick }) {
         <b>{pname(o.products, lang)}</b>
         <span className="muted small">{t('orderNo', { n: o.order_no })} · {date(o.created_at, lang)}{o.source === 'website' ? ` · ${t('fromWebsite')}` : o.source === 'shopify' ? ` · ${t('fromShopify')}` : ''}</span>
       </div>
-      <div className="or-side"><StatusPill status={o.status} /><span className={o.status === 'cancelled' || o.status === 'returned' ? 'muted small' : 'earn small'}>{o.status === 'delivered' && o.profit_locked ? <><Icon name="lock" size={12} /> </> : '+'}{money(orderProfit(o), lang)}</span></div>
+      <div className="or-side"><StatusPill status={o.status} /><span className={o.status === 'cancelled' || o.status === 'returned' ? 'muted small' : 'earn small'}>{o.status === 'delivered' && o.profit_locked ? <><Icon name="lock" size={12} /> </> : '+'}{money(orderPayout(o), lang)}</span></div>
     </button>
   );
 }
@@ -441,6 +441,7 @@ export function Orders({ data, openId, reload, notify, onOrdered }) {
               <dt>{t('yourPrice')}</dt><dd>{money(current.unit_price, lang)}</dd>
               {orderFee(current) > 0 && <><dt>{t('profitBeforeFee')}</dt><dd>{money(orderGross(current), lang)}</dd><dt>{t('forsaFeeLine', { p: num(Number(current.fee_pct), lang) })}</dt><dd>−{money(orderFee(current), lang)}</dd></>}
               <dt>{t('youKeep')}</dt><dd className="earn">{money(orderProfit(current), lang)}{current.status === 'delivered' && current.profit_locked ? ` · ${t('locked')}` : ''}</dd>
+              {orderCostBack(current) > 0 && <><dt>{t('costBack')}</dt><dd className="earn">+{money(orderCostBack(current), lang)}</dd><dt className="strong">{t('forsaPaysYou')}</dt><dd className="strong earn">{money(orderPayout(current), lang)}</dd></>}
               <dt>{t('customerName')}</dt><dd>{current.customer_name}</dd>
               <dt>{t('customerPhone')}</dt><dd dir="ltr">{current.customer_phone}</dd>
               <dt>{t('address')}</dt><dd>{current.address}, {lang === 'ar' ? (GOVERNORATES.find((g) => g[0] === current.governorate)?.[1] || current.governorate) : current.governorate}</dd>
@@ -478,6 +479,7 @@ export function Earnings({ data }) {
         <div className="stat"><span>{t('lockedProfit')}</span><b>{money(sum.locked, lang)}</b>{sum.locked > 0 && <span className="note">{t('lockedNote')}</span>}</div>
         <div className="stat"><span>{t('pendingEarn')}</span><b>{money(sum.onTheWay, lang)}</b></div>
         <div className="stat"><span>{t('forsaFee')}</span><b>{money(sum.fees, lang)}</b><span className="note">{t('feePctNote', { p: num(PLAN.feePct, lang) })}</span></div>
+        {sum.costBack > 0 && <div className="stat"><span>{t('costBack')}</span><b>{money(sum.costBack, lang)}</b><span className="note">{t('costBackNote')}</span></div>}
       </div>
       <p className="muted small">{t('earnedNote')}</p>
       <div className="section-head"><h2>{t('payouts')}</h2></div>

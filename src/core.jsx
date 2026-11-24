@@ -52,8 +52,12 @@ export function imgSrc(url) { return url || ''; }
 export const orderGross = (o) => (o.unit_price - o.wholesale_price) * (Number(o.quantity) || 1);
 export const orderFee = (o) => Math.round(Math.max(0, orderGross(o)) * (Number(o.fee_pct) || 0) / 100);
 export const orderProfit = (o) => orderGross(o) - orderFee(o);
+// Seller's own product (Forsa stores his pieces): Forsa also pays back his cost per piece.
+export const orderCostBack = (o) => (o.seller_stock ? (Number(o.wholesale_price) || 0) * (Number(o.quantity) || 1) : 0);
+// What Forsa pays the seller for an order: his profit (+ his cost back for his own products).
+export const orderPayout = (o) => orderProfit(o) + orderCostBack(o);
 // Fee for a product the seller hasn't ordered yet (profit calculator, catalog).
-export const feeFor = (product, gross) => (product?.owner_id ? 0 : Math.round(Math.max(0, gross) * PLAN.feePct / 100));
+export const feeFor = (product, gross) => (product?.owner_id && !product?.seller_made ? 0 : Math.round(Math.max(0, gross) * PLAN.feePct / 100));
 
 // ---------- Plan logic ----------
 // 3-pieces rule (same as the database): orders always move right away, but while a seller is locked the profit of
@@ -84,12 +88,13 @@ export function planState(profile, orders) {
 }
 
 export function earningsSummary(orders, payouts) {
-  const earned = orders.filter((o) => o.status === 'delivered' && !o.profit_locked).reduce((s, o) => s + orderProfit(o), 0);
-  const locked = orders.filter(isLocked).reduce((s, o) => s + orderProfit(o), 0);
+  const earned = orders.filter((o) => o.status === 'delivered' && !o.profit_locked).reduce((s, o) => s + orderPayout(o), 0);
+  const locked = orders.filter(isLocked).reduce((s, o) => s + orderPayout(o), 0);
   const fees = orders.filter((o) => o.status === 'delivered').reduce((s, o) => s + orderFee(o), 0);
-  const onTheWay = orders.filter((o) => ['confirmed', 'shipped'].includes(o.status)).reduce((s, o) => s + orderProfit(o), 0);
+  const costBack = orders.filter((o) => o.status === 'delivered').reduce((s, o) => s + orderCostBack(o), 0);
+  const onTheWay = orders.filter((o) => ['confirmed', 'shipped'].includes(o.status)).reduce((s, o) => s + orderPayout(o), 0);
   const paidOut = payouts.reduce((s, p) => s + p.amount, 0);
-  return { earned, locked, fees, onTheWay, paidOut, balance: Math.max(0, earned - paidOut) };
+  return { earned, locked, fees, costBack, onTheWay, paidOut, balance: Math.max(0, earned - paidOut) };
 }
 
 // ---------- UI components ----------
@@ -205,6 +210,7 @@ const PATHS = {
   factory: 'M3 21V10l5 3V10l5 3V10l5 3V4h3v17zM7 17h2M12 17h2M17 17h2',
   lock: 'M6 11h12v10H6zM8.5 11V8a3.5 3.5 0 0 1 7 0v3',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2',
+  image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15.5 9.5a1.5 1.5 0 1 0 0-.01',
   link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
   alert: 'M12 3l10 18H2zM12 10v4M12 17.5v.5',
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',

@@ -1,6 +1,6 @@
 // Admin panel (English only, for the Forsa team).
 import React, { useMemo, useState } from 'react';
-import { Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, orderFee, imgSrc, planState, earningsSummary, go } from '../core.jsx';
+import { Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, orderProfit, orderFee, orderPayout, orderCostBack, imgSrc, planState, earningsSummary, go } from '../core.jsx';
 import { CATEGORIES, GOVERNORATES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
@@ -17,7 +17,7 @@ export function Admin({ notify }) {
         {TABS.map((x) => <button type="button" key={x} role="tab" className="chip" aria-pressed={tab === x} aria-selected={tab === x} onClick={() => setTab(x)}>{x}</button>)}
       </div>
       {tab === 'Orders' && <AdminOrders notify={notify} />}
-      {tab === 'Products' && <AdminProducts notify={notify} />}
+      {tab === 'Products' && <><AdminSellerProducts notify={notify} /><AdminProducts notify={notify} /></>}
       {tab === 'Shipping' && <AdminShipping notify={notify} />}
       {tab === 'Websites' && <><AdminWebsites notify={notify} /><AdminConnections notify={notify} /></>}
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
@@ -53,7 +53,7 @@ function AdminOrders({ notify }) {
               <p className="small">Customer: <b>{o.customer_name}</b> · <span dir="ltr">{o.customer_phone}</span><br />{o.address}, {o.governorate}{o.notes ? ` · Note: ${o.notes}` : ''}</p>
               {o.product_options && <p className="small"><b>Product details:</b> {o.product_options}</p>}
               <p className="small muted">Seller: {o.profiles?.full_name} · {o.profiles?.phone} · Factory {o.products?.factory_code} · {date(o.created_at, 'en')}</p>
-              <p className="small">Sell {money(o.unit_price, 'en')} · Wholesale {money(o.wholesale_price, 'en')} · Forsa fee {money(orderFee(o), 'en')}{Number(o.fee_pct) ? ` (${Number(o.fee_pct)}%)` : ''} · Seller keeps <b>{money(orderProfit(o), 'en')}</b>{o.status === 'delivered' && o.profit_locked ? ' (locked)' : ''} · Shipping {money(o.shipping_fee || 0, 'en')} · Collect <b>{money(o.unit_price * o.quantity + (o.shipping_fee || 0), 'en')}</b></p>
+              <p className="small">Sell {money(o.unit_price, 'en')} · Wholesale {money(o.wholesale_price, 'en')} · Forsa fee {money(orderFee(o), 'en')}{Number(o.fee_pct) ? ` (${Number(o.fee_pct)}%)` : ''} · Seller keeps <b>{money(orderPayout(o), 'en')}</b>{orderCostBack(o) ? ` (incl. his cost back ${money(orderCostBack(o), 'en')})` : ''}{o.status === 'delivered' && o.profit_locked ? ' (locked)' : ''} · Shipping {money(o.shipping_fee || 0, 'en')} · Collect <b>{money(o.unit_price * o.quantity + (o.shipping_fee || 0), 'en')}</b></p>
               {o.own_order && <p className="small"><b>Seller's own number</b> — doesn't count toward 3 pieces.</p>}
               <label className="small" htmlFor={`st-${o.id}`}>Status</label>
               <select id={`st-${o.id}`} value={o.status} onChange={(e) => change(o, e.target.value)}>
@@ -69,6 +69,67 @@ function AdminOrders({ notify }) {
 
 const EMPTY_PRODUCT = { name_en: '', name_ar: '', description_en: '', description_ar: '', category: 'Clothing', factory_code: '', region: '', quality_score: 4.5, wholesale_price: '', market_price: '', min_price: '', suggested_price: '', ship_days: 3, image_url: '', stock: 0, active: true };
 
+// Products sellers made themselves: approve / reject (reason), then record how many pieces Forsa holds.
+const OWN_STATUS = { pending: 'Waiting', approved: 'Approved', rejected: 'Rejected' };
+function AdminSellerProducts({ notify }) {
+  const { loading, data, error, reload } = useLoad(() => api.adminSellerProducts(), []);
+  const [reasons, setReasons] = useState({});
+  const [stock, setStock] = useState({});
+  const [busy, setBusy] = useState('');
+  async function decide(p, status) {
+    if (status === 'rejected' && !(reasons[p.id] || '').trim()) { notify('Write a short reason first'); return; }
+    setBusy(p.id);
+    try { await api.adminReviewProduct(p.id, status, reasons[p.id] || ''); notify(`${p.name_en}: ${OWN_STATUS[status]}`); reload(); } catch (e) { notify(e.message); } finally { setBusy(''); }
+  }
+  async function saveStock(p) {
+    setBusy(p.id);
+    try { await api.adminSetStock(p.id, stock[p.id]); notify(`${p.name_en}: ${stock[p.id]} pieces at Forsa`); setStock((s) => ({ ...s, [p.id]: undefined })); reload(); } catch (e) { notify(e.message); } finally { setBusy(''); }
+  }
+  if (loading) return <Spinner />;
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
+  const list = data || [];
+  const waiting = list.filter((p) => p.review_status === 'pending').length;
+  return (
+    <div className="stack" style={{ marginBottom: 18 }}>
+      <div className="section-head"><h2>Sellers' own products{waiting ? ` (${waiting} waiting)` : ''}</h2></div>
+      <p className="small muted">Products sellers made themselves. Check the photo and name (no fake brands, nothing illegal). After you approve, the seller sends his pieces to Forsa — enter how many you received. Forsa keeps 10% of the profit; the seller gets the rest + his cost back.</p>
+      {list.length === 0 ? <div className="card empty"><p>No seller products yet.</p></div> : (
+        <div className="list">
+          {list.map((p) => (
+            <div key={p.id} className="card stack admin-web">
+              <div className="row" style={{ flexWrap: 'nowrap', alignItems: 'center' }}>
+                <img src={imgSrc(p.image_url)} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: 'cover', flex: 'none' }} />
+                <div className="or-main"><b>{p.name_en}</b><span className="small muted">{p.profiles?.full_name} · {p.category}</span></div>
+                <span className={`pill pill-${p.review_status === 'approved' ? 'delivered' : p.review_status === 'pending' ? 'pending' : 'cancelled'}`}>{OWN_STATUS[p.review_status]}</span>
+              </div>
+              {p.description_en && <p className="small">{p.description_en}</p>}
+              <p className="small">Seller cost {money(p.wholesale_price, 'en')} · Sells for {money(p.suggested_price, 'en')} · Pieces at Forsa <b>{p.stock}</b></p>
+              {p.review_reason && <p className="small muted">Reason: {p.review_reason}</p>}
+              {p.review_status !== 'approved' && (
+                <>
+                  <Field id={`asp-r-${p.id}`} label="Reason (needed to reject)"><input id={`asp-r-${p.id}`} maxLength={300} value={reasons[p.id] || ''} onChange={(e) => setReasons((r) => ({ ...r, [p.id]: e.target.value }))} /></Field>
+                  <div className="row">
+                    <Button small onClick={() => decide(p, 'approved')} disabled={busy === p.id}>Approve</Button>
+                    {p.review_status === 'pending' && <Button small variant="ghost" onClick={() => decide(p, 'rejected')} disabled={busy === p.id}>Reject</Button>}
+                  </div>
+                </>
+              )}
+              {p.review_status === 'approved' && (
+                <div className="row" style={{ alignItems: 'flex-end' }}>
+                  <Field id={`asp-s-${p.id}`} label="Pieces Forsa holds now"><input id={`asp-s-${p.id}`} type="number" inputMode="numeric" min="0" value={stock[p.id] ?? ''} placeholder={String(p.stock)} onChange={(e) => setStock((s) => ({ ...s, [p.id]: e.target.value }))} /></Field>
+                  <Button small onClick={() => saveStock(p)} disabled={busy === p.id || stock[p.id] === undefined || stock[p.id] === ''}>Save</Button>
+                  <Button small variant="ghost" onClick={() => decide(p, 'rejected')} disabled={busy === p.id || !(reasons[p.id] || '').trim()}>Stop selling</Button>
+                </div>
+              )}
+              {p.review_status === 'approved' && <Field id={`asp-r2-${p.id}`} label="Reason (needed to stop selling)"><input id={`asp-r2-${p.id}`} maxLength={300} value={reasons[p.id] || ''} onChange={(e) => setReasons((r) => ({ ...r, [p.id]: e.target.value }))} /></Field>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminProducts({ notify }) {
   const { loading, data, error, reload } = useLoad(() => api.listProducts({ all: true }), []);
   const [edit, setEdit] = useState(null);
@@ -78,7 +139,7 @@ function AdminProducts({ notify }) {
     <>
       <Button block onClick={() => setEdit({ ...EMPTY_PRODUCT })}>+ Add product</Button>
       <div className="list">
-        {data.map((p) => (
+        {data.filter((p) => !p.seller_made).map((p) => (
           <button type="button" key={p.id} className="order-row" onClick={() => setEdit({ ...p })}>
             <img src={imgSrc(p.image_url)} alt="" />
             <div className="or-main"><b>{p.name_en}</b><span className="muted small">{p.owner_id ? 'Private (custom) · ' : ''}{p.factory_code} · W {p.wholesale_price}{p.market_price ? ` · Market ${p.market_price}` : ''} · Min {p.min_price} · Stock {p.stock}</span></div>

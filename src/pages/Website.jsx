@@ -103,6 +103,31 @@ export function WebsiteCard({ business, data, notify }) {
   );
 }
 
+// Seller's own name + photo for a product on his website (his brand look). Orders still use the real product.
+function ItemLook({ p, it, onChange, onError }) {
+  const { t, lang } = useApp();
+  const [open, setOpen] = useState(!!(it.name || it.image_url));
+  const [busy, setBusy] = useState(false);
+  async function upload(e) {
+    const file = e.target.files?.[0]; if (!file) return;
+    if (file.size > 3 * 1024 * 1024) { onError(t('max3mb')); return; }
+    setBusy(true);
+    try { onChange({ image_url: await api.uploadLogo(file) }); } catch (er) { onError(er.message); } finally { setBusy(false); }
+  }
+  if (!open) return <button type="button" className="link-btn small item-look-open" onClick={() => setOpen(true)}>{t('webItemLook')}</button>;
+  return (
+    <div className="item-look stack">
+      <span className="small muted">{t('webItemLookHint')}</span>
+      <Field id={`wb-nm-${p.id}`} label={t('webItemName')}><input id={`wb-nm-${p.id}`} maxLength={80} value={it.name || ''} placeholder={pname(p, lang)} onChange={(e) => onChange({ name: e.target.value })} /></Field>
+      <div className="row upload-row">
+        <span className="cover-thumb"><img src={imgSrc(it.image_url || p.image_url)} alt="" /></span>
+        <Field id={`wb-im-${p.id}`} label={t('webItemPhoto')}><input id={`wb-im-${p.id}`} type="file" accept="image/*" disabled={busy} onChange={upload} /></Field>
+      </div>
+      {(it.name || it.image_url) && <button type="button" className="link-btn small" onClick={() => onChange({ name: '', image_url: '' })}>{t('webItemReset')}</button>}
+    </div>
+  );
+}
+
 // ---------- Website builder ----------
 const blank = (w, business) => ({
   slug: w.slug || '', template: w.template || 'classic', style: api.styleOf(w), brand_name: w.brand_name || business?.name || '', about: w.about || '', color: w.color || 'black',
@@ -285,6 +310,7 @@ export function WebsiteBuilder({ bizId, data, notify }) {
                       <button type="button" className="icon-btn small" aria-label={t('moveDown')} onClick={() => move(p.id, 1)}>↓</button>
                     </div>
                   )}
+                  {it && <ItemLook p={p} it={it} onChange={(patch) => patchItem(p.id, patch)} onError={(m) => setErr({ ...err, items: m })} />}
                 </div>
               );
             })}
@@ -325,7 +351,7 @@ export function StoreView({ store, preview, onPick }) {
   const card = (p) => (
     <button type="button" key={p.id} className="store-product" onClick={() => onPick?.(p)} disabled={preview} tabIndex={preview ? -1 : undefined}>
       <span className="ph"><img src={imgSrc(p.image_url)} alt="" loading="lazy" /></span>
-      <span className="store-pinfo"><b className="pname">{pname(p, lang)}</b><span className="store-price">{money(p.price, lang)}</span></span>
+      <span className="store-pinfo"><b className="pname">{pname(p, lang)}</b><span className="store-price">{money(p.price, lang)}</span>{p.sold_out && <span className="sold-out">{t('soldOut')}</span>}</span>
     </button>
   );
   const cover = st.cover !== 'none' && store.cover_url;
@@ -412,13 +438,14 @@ export function Storefront({ slug }) {
             <div className="store-sheet-img"><img src={imgSrc(pick.image_url)} alt={pname(pick, lang)} /></div>
             <p className="muted">{lang === 'ar' ? pick.description_ar : pick.description_en}</p>
             <div className="row-between"><b className="store-price big">{money(pick.price, lang)}</b>
-              <div className="stepper">
+              {!pick.sold_out && <div className="stepper">
                 <button type="button" onClick={() => setQty(Math.max(1, qty - 1))} aria-label="−">−</button>
                 <output aria-label={t('quantity')}>{num(qty, lang)}</output>
                 <button type="button" onClick={() => setQty(Math.min(10, qty + 1))} aria-label="+">+</button>
-              </div>
+              </div>}
             </div>
-            <button type="button" className="btn btn-primary block store-btn" onClick={() => setStep('form')}>{t('storeOrderNow')}</button>
+            {pick.sold_out ? <p className="sold-out big">{t('soldOutLine')}</p>
+              : <button type="button" className="btn btn-primary block store-btn" onClick={() => setStep('form')}>{t('storeOrderNow')}</button>}
             <p className="small muted"><Icon name="truck" size={14} /> {t('storeCod')}</p>
           </div>
         ) : (

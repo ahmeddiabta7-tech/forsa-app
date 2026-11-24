@@ -2,6 +2,23 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.14 — Nov 2026 (seller's own products + own name & photo on the website)
+- **Add my own product:** in My Business → "My own products" → "+ Add my own product". The seller uploads his own
+  photo, name, description, type, his cost per piece and selling price, and sees what Forsa pays him per piece
+  (profit − 10% Forsa fee + his cost back). Forsa approves each one (Admin → Products → Sellers' own products:
+  approve, reject with a reason, stop selling) and records how many pieces the seller has sent to Forsa.
+  Changing the name, photo, description or cost sends it back for approval; a price-only change does not.
+- **Orders:** approved own products appear in "+ New order" and on the seller's website. Each order reserves pieces
+  from the stock at Forsa (blocked with a clear message if not enough); cancelled/returned orders put pieces back.
+  Forsa keeps 10% of the profit; the seller is paid profit − fee + his cost (cost back is shown on orders and earnings).
+  Own products are never on hold under the 3-pieces rule.
+- **Website:** the seller can add Forsa products and his own products, and give any product his own name and photo on
+  his website ("Use my own name & photo"). Out-of-stock own products show "Sold out" and can't be ordered.
+- Connect existing website text: removed "Forsa ships and collects the cash".
+- Database: `supabase/v1_14.sql` (pending/approved review, stock reservation trigger, website item name/photo).
+- Tests: database tests (validation, privacy of pending products, approval, stock, fee, cancel restores stock, website
+  overrides), phone flows on 4 phones in English and Arabic (68 checks), plus the earlier regression suites.
+
 ## Version 1.13 — Nov 2026 (website design freedom + connect Shopify)
 - **Website design:** 6 templates (Classic, Bold, Minimal, Elegant, Playful, Dark) as starting points, then the seller
   mixes options so websites don't look the same: any colour (8 ready + colour picker), font (Modern, Elegant, Soft,
