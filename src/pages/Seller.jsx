@@ -7,6 +7,7 @@ import { computeStats, inPeriod, expensesIn, profitSeries, getAdvice } from '../
 import { tipText } from './Grow.jsx';
 import { AddToBusiness } from './Business.jsx';
 import { ProductSwitch } from './Make.jsx';
+import { ReviewBanner } from './Connect.jsx';
 import { GOVERNORATES, CATEGORIES } from '../lib/i18n.js';
 import { PLAN } from '../config.js';
 import * as api from '../lib/api.js';
@@ -397,7 +398,7 @@ export function OrderRow({ o, onClick }) {
       <img src={imgSrc(o.products?.image_url)} alt="" />
       <div className="or-main">
         <b>{pname(o.products, lang)}</b>
-        <span className="muted small">{t('orderNo', { n: o.order_no })} · {date(o.created_at, lang)}{o.source === 'website' ? ` · ${t('fromWebsite')}` : ''}</span>
+        <span className="muted small">{t('orderNo', { n: o.order_no })} · {date(o.created_at, lang)}{o.source === 'website' ? ` · ${t('fromWebsite')}` : o.source === 'shopify' ? ` · ${t('fromShopify')}` : ''}</span>
       </div>
       <div className="or-side"><StatusPill status={o.status} /><span className={o.status === 'cancelled' || o.status === 'returned' ? 'muted small' : 'earn small'}>{o.status === 'delivered' && o.profit_locked ? <><Icon name="lock" size={12} /> </> : '+'}{money(orderProfit(o), lang)}</span></div>
     </button>
@@ -420,6 +421,7 @@ export function Orders({ data, openId, reload, notify, onOrdered }) {
   return (
     <div className="screen">
       <Header title={t('orders')} right={<button type="button" className="btn btn-primary small new-order-btn" onClick={() => go('/orders/new')}>+ {t('newOrder')}</button>} />
+      <ReviewBanner data={data} onDone={reload} notify={notify} />
       <div className="chips scroll" role="group">
         <button type="button" className="chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>{t('all')}</button>
         {STATUSES.map((s) => <button type="button" key={s} className="chip" aria-pressed={filter === s} onClick={() => setFilter(s)}>{t(`status_${s}`)}</button>)}
@@ -433,7 +435,7 @@ export function Orders({ data, openId, reload, notify, onOrdered }) {
         {current && (
           <div className="stack">
             <div className="row-between"><b>{pname(current.products, lang)} × {num(current.quantity, lang)}</b><StatusPill status={current.status} /></div>
-            {current.source === 'website' && <span className="src-tag"><Icon name="globe" size={13} /> {t('fromWebsite')}</span>}
+            {(current.source === 'website' || current.source === 'shopify') && <span className="src-tag"><Icon name="globe" size={13} /> {t(current.source === 'shopify' ? 'fromShopify' : 'fromWebsite')}</span>}
             <OrderTracker o={current} />
             <dl className="kv">
               <dt>{t('yourPrice')}</dt><dd>{money(current.unit_price, lang)}</dd>

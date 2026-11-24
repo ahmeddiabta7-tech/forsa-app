@@ -2,6 +2,26 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.13 — Nov 2026 (website design freedom + connect Shopify)
+- **Website design:** 6 templates (Classic, Bold, Minimal, Elegant, Playful, Dark) as starting points, then the seller
+  mixes options so websites don't look the same: any colour (8 ready + colour picker), font (Modern, Elegant, Soft,
+  Strong), page background (White, Cream, Light colour, Dark), corners (Rounded, Very round, Sharp), top of page (logo
+  on the side, centred, colour band), products layout (2 / 3 per row, list, big photos), cover photo (above the title,
+  title on the photo, hide) and which sections to show. Light colours keep prices readable automatically.
+- **Connect existing website (Shopify):** in My Business → My website → "Connect existing website". Anyone can ask;
+  Forsa approves in Admin → Websites → Connected stores (approve / reject / pause with reason). Then a 5-step guide:
+  Forsa code (FS-XXXXXX) as the SKU on each Shopify product, Cash on Delivery + Forsa shipping prices, create the
+  "Order creation" webhook with the seller's private Forsa link, paste Shopify's signing key, test order.
+  New Shopify orders arrive as pending, marked "From Shopify". Orders Forsa can't match (unknown code, price below the
+  minimum, bad phone, unknown governorate, missing address, paid online) wait in "Needs review" at the top of Orders,
+  where the seller fixes them or ignores them.
+  Security: the Edge Function `store-webhook` (Verify JWT off) only relays the raw order; the database checks the
+  connection token and Shopify's HMAC-SHA256 signature with the seller's signing key (stored where nobody can read it).
+- Database: `supabase/v1_13.sql`. Edge Function: `supabase/functions/store-webhook/index.ts`.
+- Tests: database tests (signature, token, duplicates, review cases, governorate names, privacy, anon access),
+  relay unit tests, phone flows on iPhone SE, iPhone 14 Pro Max, Galaxy S8, Galaxy S5 in English and Arabic,
+  website flow tests (132 checks) and the regression sweep (180 screen checks) — all passing.
+
 ## Version 1.12.2 — Nov 2026 (AI advisor: photos for dropshipping)
 - The AI advisor no longer tells ready-product (dropshipping) sellers to take their own photos or videos — they usually
   don't have the product in hand. It suggests the Forsa product photos, AI-made photos/videos, content that needs no

@@ -1,7 +1,7 @@
 // All data access for the app. Uses Supabase when configured, otherwise a local demo store.
 import { isConfigured, db, storage, auth, getSession, invokeFunction } from './supa.js';
 import { DEMO_PRODUCTS, DEMO_MANUFACTURERS } from './demo.js';
-import { PLAN } from '../config.js';
+import { PLAN, SUPABASE_URL } from '../config.js';
 import { GOVERNORATES } from './i18n.js';
 
 const live = isConfigured();
@@ -21,7 +21,7 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
-  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites'].forEach((k) => { if (!d[k]) d[k] = []; });
+  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites', 'store_connections', 'external_orders'].forEach((k) => { if (!d[k]) d[k] = []; });
   d.orders.forEach((o) => { if (o.status === 'on_hold') o.status = 'pending'; }); // old demo data
   if (!d.settings) d.settings = { website_min_orders: 20 };
   if (!d.shipping_rates) d.shipping_rates = GOVERNORATES.map(([g]) => ({ governorate: g, fee: 70, active: true }));
@@ -191,7 +191,7 @@ function demoCreateOrder(o, sellerId) {
   const c = normPhone(o.customer_phone);
   const own = c.length === 10 && (c === normPhone(me.phone) || (['vodafone_cash', 'instapay'].includes(me.payout_method) && c === normPhone(me.payout_account)));
   const row = { ...o, product_options: String(o.product_options || '').trim().slice(0, 200), shipping_fee: rate.fee, id: uid(), order_no: ++demo.seq, seller_id: sellerId, wholesale_price: p.wholesale_price, status: 'pending',
-    fee_pct: p.owner_id ? 0 : PLAN.feePct, own_order: own, profit_locked: false, profit_released_at: null, source: o.source === 'website' ? 'website' : 'app', created_at: now(), updated_at: now() };
+    fee_pct: p.owner_id ? 0 : PLAN.feePct, own_order: own, profit_locked: false, profit_released_at: null, source: ['website', 'shopify'].includes(o.source) ? o.source : 'app', created_at: now(), updated_at: now() };
   demo.orders.push(row);
   demoSave(); return { ...row };
 }
@@ -622,7 +622,43 @@ export async function askAdvisor({ businessId = null, question = '', lang = 'en'
 
 // ---------- Seller websites (template websites, approved by Forsa) ----------
 export const WEBSITE_COLORS = { black: '#141414', green: '#1f6f50', blue: '#1f4e8c', red: '#b3261e', purple: '#5b3a8c', orange: '#c2571a', pink: '#b83d78', brown: '#6b4a2f' };
-export const WEBSITE_TEMPLATES = ['classic', 'bold', 'minimal'];
+export const WEBSITE_TEMPLATES = ['classic', 'bold', 'minimal', 'elegant', 'playful', 'dark'];
+// Each template is a starting point; the seller can then change every option (website style).
+export const STYLE_OPTIONS = {
+  font: ['modern', 'elegant', 'rounded', 'strong'],
+  bg: ['white', 'cream', 'tint', 'dark'],
+  buttons: ['rounded', 'pill', 'square'],
+  header: ['left', 'center', 'banner'],
+  layout: ['grid2', 'grid3', 'list', 'large'],
+  cover: ['wide', 'overlay', 'none'],
+};
+export const TEMPLATE_PRESETS = {
+  classic: { font: 'modern', bg: 'white', buttons: 'rounded', header: 'left', layout: 'grid2', cover: 'wide' },
+  bold: { font: 'strong', bg: 'white', buttons: 'square', header: 'banner', layout: 'grid2', cover: 'wide' },
+  minimal: { font: 'modern', bg: 'white', buttons: 'pill', header: 'center', layout: 'large', cover: 'none' },
+  elegant: { font: 'elegant', bg: 'cream', buttons: 'square', header: 'center', layout: 'grid2', cover: 'overlay' },
+  playful: { font: 'rounded', bg: 'tint', buttons: 'pill', header: 'left', layout: 'grid2', cover: 'wide' },
+  dark: { font: 'modern', bg: 'dark', buttons: 'rounded', header: 'center', layout: 'grid2', cover: 'overlay' },
+};
+const SECTION_KEYS = ['show_about', 'show_social', 'show_featured'];
+export function cleanStyle(st) {
+  const r = {};
+  Object.entries(STYLE_OPTIONS).forEach(([k, vals]) => { if (st && vals.includes(st[k])) r[k] = st[k]; });
+  SECTION_KEYS.forEach((k) => { if (st && typeof st[k] === 'boolean') r[k] = st[k]; });
+  return r;
+}
+// Full style of a website: template preset + the seller's own choices.
+export function styleOf(w) {
+  return { show_about: true, show_social: true, show_featured: true, ...(TEMPLATE_PRESETS[w?.template] || TEMPLATE_PRESETS.classic), ...cleanStyle(w?.style) };
+}
+export const isHexColor = (c) => /^#[0-9a-f]{6}$/.test(String(c || ''));
+export function brandHex(c) { return isHexColor(c) ? c : (WEBSITE_COLORS[c] || WEBSITE_COLORS.black); }
+// White or black text, whichever reads better on the brand colour.
+export function onBrand(hex) {
+  const n = parseInt(brandHex(hex).slice(1), 16); const ch = [n >> 16, (n >> 8) & 255, n & 255].map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; });
+  const L = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  return (1.05 / (L + 0.05)) >= ((L + 0.05) / 0.05) ? '#ffffff' : '#141414';
+}
 const RESERVED_SLUGS = ['admin', 'forsa', 'api', 'app', 'www', 'store', 'shop', 'help', 'support', 'login', 'signup', 'home', 'orders', 'products', 'business', 's'];
 export const storeLink = (slug) => `${window.location.origin}${window.location.pathname}#/s/${slug}`;
 const fail = (m) => { throw new Error(m); };
@@ -658,7 +694,7 @@ export async function requestWebsite(businessId) {
     Object.assign(w, { status: 'requested', reason: '', requested_at: now(), decided_at: null, updated_at: now() }); demoSave(); return { ...w };
   }
   const x = { id: uid(), business_id: businessId, owner_id: meId(), status: 'requested', reason: '', published: false, slug: null, template: 'classic',
-    brand_name: b.name.slice(0, 60), about: '', color: 'black', logo_url: b.logo_url || '', cover_url: '', instagram: '', tiktok: '', facebook: '',
+    brand_name: b.name.slice(0, 60), about: '', color: 'black', style: {}, logo_url: b.logo_url || '', cover_url: '', instagram: '', tiktok: '', facebook: '',
     items: [], requested_at: now(), decided_at: null, updated_at: now() };
   demo.websites.push(x); demoSave(); return { ...x };
 }
@@ -673,7 +709,7 @@ export function slugProblem(v) {
 
 export async function saveWebsite(businessId, f) {
   const payload = {
-    slug: cleanSlug(f.slug), template: f.template, brand_name: String(f.brand_name || '').trim(), about: String(f.about || '').trim(), color: f.color,
+    slug: cleanSlug(f.slug), template: f.template, style: cleanStyle(f.style), brand_name: String(f.brand_name || '').trim(), about: String(f.about || '').trim(), color: String(f.color || 'black').toLowerCase(),
     logo_url: f.logo_url || '', cover_url: f.cover_url || '', instagram: String(f.instagram || '').trim(), tiktok: String(f.tiktok || '').trim(),
     facebook: String(f.facebook || '').trim(), items: (f.items || []).map((i) => ({ product_id: i.product_id, price: Math.round(Number(i.price)), featured: !!i.featured })),
   };
@@ -684,6 +720,8 @@ export async function saveWebsite(businessId, f) {
   if (sl && slugProblem(sl) === 'format') fail('Link name: 3-30 small English letters, numbers or dashes');
   if (sl && slugProblem(sl) === 'reserved') fail('This link name is not allowed');
   if (sl && demo.websites.some((x) => x.slug === sl && x.id !== w.id)) fail('This link name is taken');
+  if (!(WEBSITE_COLORS[payload.color] || isHexColor(payload.color))) fail('Invalid colour');
+  if (!WEBSITE_TEMPLATES.includes(payload.template)) fail('Invalid template');
   const seen = new Set(); const items = [];
   payload.items.forEach((i) => {
     if (seen.has(i.product_id)) return;
@@ -743,7 +781,7 @@ export function storeView(w, products = live ? [] : demo.products, shipping = li
     return { id: p.id, name_en: p.name_en, name_ar: p.name_ar, description_en: p.description_en, description_ar: p.description_ar, image_url: p.image_url, category: p.category,
       price: Math.max(Number(i.price) || 0, p.min_price), featured: !!i.featured };
   }).filter(Boolean);
-  return { slug: w.slug, template: w.template, brand_name: w.brand_name, about: w.about, color: w.color, logo_url: w.logo_url, cover_url: w.cover_url,
+  return { slug: w.slug, template: w.template, style: w.style || {}, brand_name: w.brand_name, about: w.about, color: w.color, logo_url: w.logo_url, cover_url: w.cover_url,
     instagram: w.instagram, tiktok: w.tiktok, facebook: w.facebook, items,
     shipping: shipping.filter((r) => r.active !== false).map((r) => ({ governorate: r.governorate, fee: r.fee })) };
 }
@@ -766,6 +804,78 @@ export async function placeStoreOrder({ slug, product_id, quantity, name, phone,
     customer_phone: `0${c}`, governorate, address: String(address).trim().slice(0, 300), product_options: options, notes: '', source: 'website' }, w.owner_id);
   return o.order_no;
 }
+
+
+// ---------- Connect an existing website (Shopify) ----------
+// Forsa product code sellers put as the SKU in Shopify (same as forsa_code() in the database).
+export const forsaCode = (id) => `FS-${String(id || '').replace(/-/g, '').slice(0, 6).toUpperCase()}`;
+export const webhookUrl = (c) => `${SUPABASE_URL || 'https://your-project.supabase.co'}/functions/v1/store-webhook?c=${c.id}&t=${c.token}`;
+export const EXTERNAL_PROBLEMS = ['unknown_product', 'price_below_min', 'bad_phone', 'unknown_governorate', 'missing_address', 'paid_online'];
+
+export async function myConnections() {
+  if (live) return db.select('store_connections', `select=*&owner_id=eq.${getSession()?.user?.id}`);
+  return demo.store_connections.filter((c) => c.owner_id === meId()).map((c) => ({ ...c }));
+}
+export function cleanShop(v) { return String(v || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''); }
+export async function requestConnection(businessId, shop) {
+  if (live) return db.rpc('request_connection', { p_business: businessId, p_shop: shop });
+  if (!demo.businesses.some((b) => b.id === businessId && b.owner_id === meId())) fail('This business is not yours');
+  const sh = cleanShop(shop);
+  if (!/^[a-z0-9][a-z0-9.-]{1,198}[a-z0-9]$/.test(sh) || !sh.includes('.')) fail('Write your Shopify store address, e.g. nour.myshopify.com');
+  const c = demo.store_connections.find((x) => x.business_id === businessId);
+  if (c) {
+    if (c.status !== 'rejected') fail('You already asked to connect a store to this business');
+    Object.assign(c, { shop: sh, status: 'requested', reason: '', requested_at: now(), decided_at: null }); demoSave(); return { ...c };
+  }
+  const x = { id: uid(), business_id: businessId, owner_id: meId(), platform: 'shopify', shop: sh, status: 'requested', reason: '', token: Array.from({ length: 48 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join(''),
+    has_secret: false, orders_count: 0, last_order_at: null, requested_at: now(), decided_at: null };
+  demo.store_connections.push(x); demoSave(); return { ...x };
+}
+export async function setConnectionSecret(businessId, secret) {
+  if (live) return db.rpc('set_connection_secret', { p_business: businessId, p_secret: secret });
+  const c = demo.store_connections.find((x) => x.business_id === businessId && x.owner_id === meId()) || fail('Connection not found');
+  if (c.status !== 'approved') fail('Your connection is not approved yet');
+  const s2 = String(secret || '').trim();
+  if (s2.length < 10 || s2.length > 300 || /\s/.test(s2)) fail('Paste the full signing key from Shopify');
+  c.has_secret = true; demoSave(); return { ...c };
+}
+export async function adminConnections() {
+  if (live) return db.rpc('admin_connections');
+  return demo.store_connections.map((c) => ({ ...c, business_name: demo.businesses.find((b) => b.id === c.business_id)?.name, owner_name: demo.profiles.find((p) => p.id === c.owner_id)?.full_name,
+    delivered: demoDelivered(c.owner_id), review: demo.external_orders.filter((e) => e.connection_id === c.id && e.status === 'review').length }))
+    .sort((a, b) => (b.status === 'requested') - (a.status === 'requested'));
+}
+export async function adminDecideConnection(id, status, reason = '') {
+  if (live) return db.rpc('admin_decide_connection', { p_id: id, p_status: status, p_reason: reason });
+  const c = demo.store_connections.find((x) => x.id === id) || fail('Connection not found');
+  Object.assign(c, { status, reason: String(reason || '').trim().slice(0, 300), decided_at: now() }); demoSave(); return { ...c };
+}
+// Outside orders waiting for the seller to fix them.
+export async function reviewOrders() {
+  if (live) return db.select('external_orders', `select=*&owner_id=eq.${getSession()?.user?.id}&status=eq.review&order=created_at.desc&limit=100`);
+  return demo.external_orders.filter((e) => e.owner_id === meId() && e.status === 'review').map((e) => ({ ...e }));
+}
+export async function resolveExternalOrder(f) {
+  const args = { p_id: f.id, p_product: f.product_id, p_qty: Number(f.quantity), p_price: Math.round(Number(f.price)), p_name: f.name, p_phone: latinPhone(f.phone),
+    p_governorate: f.governorate, p_address: f.address, p_options: f.options || '' };
+  if (live) return db.rpc('resolve_external_order', args);
+  const e = demo.external_orders.find((x) => x.id === f.id && x.owner_id === meId() && x.status === 'review') || fail('Order not found');
+  const p = demo.products.find((x) => x.id === f.product_id && x.active && demo.business_products.some((bp) => bp.business_id === e.business_id && bp.product_id === x.id)) || fail('Choose one of the products in this business');
+  if (!(args.p_qty >= 1 && args.p_qty <= 10)) fail('Quantity must be 1 to 10');
+  if (!(args.p_price >= p.min_price)) fail(`Price must be at least EGP ${p.min_price}`);
+  if (!/^1[0125]\d{8}$/.test(normPhone(args.p_phone))) fail('Enter a valid Egyptian mobile number');
+  if (!demo.shipping_rates.some((r) => r.governorate === f.governorate && r.active)) fail(`We don't deliver to ${f.governorate} yet`);
+  if (String(f.name || '').trim().length < 2 || String(f.address || '').trim().length < 5) fail('Write the customer name and full address');
+  const o = demoCreateOrder({ product_id: p.id, business_id: e.business_id, quantity: args.p_qty, unit_price: args.p_price, customer_name: f.name.trim(), customer_phone: `0${normPhone(args.p_phone)}`,
+    governorate: f.governorate, address: f.address.trim(), product_options: f.options || '', notes: `Shopify ${e.external_ref}`, source: 'shopify' }, e.owner_id);
+  Object.assign(e, { status: 'created', order_id: o.id }); demoSave(); return o.id;
+}
+export async function dismissExternalOrder(id) {
+  if (live) return db.rpc('dismiss_external_order', { p_id: id });
+  const e = demo.external_orders.find((x) => x.id === id && x.owner_id === meId() && x.status === 'review') || fail('Order not found');
+  e.status = 'dismissed'; demoSave(); return null;
+}
+const latinPhone = (v) => String(v || '').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[\s-]/g, '');
 
 // ---------- helpers ----------
 function demoBiz(id) { const b = demo.businesses.find((x) => x.id === id); return b ? { name: b.name, page_url: b.page_url, category: b.category, city: b.city, description: b.description, logo_url: b.logo_url } : null; }

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useApp, Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, Icon, go, LangSwitch, money, num, pname, imgSrc, latinDigits } from '../core.jsx';
 import { GOVERNORATES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
+import { ConnectBox } from './Connect.jsx';
 
 const COLORS = api.WEBSITE_COLORS;
 const delivered = (orders) => (orders || []).filter((o) => o.status === 'delivered' && !o.own_order).length;
@@ -97,13 +98,14 @@ export function WebsiteCard({ business, data, notify }) {
         <div className="or-main"><b>{t('myWebsite')}</b><span className="muted small">{t('webIntro')}</span></div>
       </div>
       {body}
+      <ConnectBox business={business} notify={notify} />
     </div>
   );
 }
 
 // ---------- Website builder ----------
 const blank = (w, business) => ({
-  slug: w.slug || '', template: w.template || 'classic', brand_name: w.brand_name || business?.name || '', about: w.about || '', color: w.color || 'black',
+  slug: w.slug || '', template: w.template || 'classic', style: api.styleOf(w), brand_name: w.brand_name || business?.name || '', about: w.about || '', color: w.color || 'black',
   logo_url: w.logo_url || '', cover_url: w.cover_url || '', instagram: w.instagram || '', tiktok: w.tiktok || '', facebook: w.facebook || '', items: w.items || [],
 });
 
@@ -185,12 +187,47 @@ export function WebsiteBuilder({ bizId, data, notify }) {
 
       <section className="card stack">
         <h3>{t('webTemplate')}</h3>
+        <p className="small muted">{t('webTemplateHint')}</p>
         <div className="tpl-pick" role="radiogroup" aria-label={t('webTemplate')}>
-          {api.WEBSITE_TEMPLATES.map((k) => (
-            <button type="button" key={k} role="radio" aria-checked={f.template === k} className={`tpl-opt tpl-${k}`} onClick={() => setF({ ...f, template: k })} style={{ '--brand': COLORS[f.color] }}>
-              <span className="tpl-thumb"><i /><i /><i /></span><b>{t(`tpl_${k}`)}</b>
-            </button>
-          ))}
+          {api.WEBSITE_TEMPLATES.map((k) => {
+            const pr = api.TEMPLATE_PRESETS[k];
+            return (
+              <button type="button" key={k} role="radio" aria-checked={f.template === k} className="tpl-opt" onClick={() => setF({ ...f, template: k, style: { ...f.style, ...pr } })}>
+                <span className={`tpl-thumb bg-${pr.bg} hd-${pr.header} lay-${pr.layout}`} style={{ '--brand': api.brandHex(f.color) }}><i /><i /><i /><i /></span><b>{t(`tpl_${k}`)}</b>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="card stack">
+        <h3>{t('webDesign')}</h3>
+        <p className="small muted">{t('webDesignHint')}</p>
+        <div>
+          <span className="label-like">{t('webColor')}</span>
+          <div className="swatches" role="radiogroup" aria-label={t('webColor')}>
+            {Object.entries(COLORS).map(([k, hex]) => <button type="button" key={k} role="radio" aria-checked={f.color === k} aria-label={t(`color_${k}`)} className="swatch" style={{ background: hex }} onClick={() => setF({ ...f, color: k })} />)}
+            <label className={`swatch swatch-custom${api.isHexColor(f.color) ? ' on' : ''}`} style={api.isHexColor(f.color) ? { background: f.color } : undefined} title={t('webOwnColor')}>
+              <span className="sr-only">{t('webOwnColor')}</span>
+              <input type="color" aria-label={t('webOwnColor')} value={api.brandHex(f.color)} onChange={(e) => setF({ ...f, color: e.target.value.toLowerCase() })} />
+            </label>
+          </div>
+        </div>
+        {Object.entries(api.STYLE_OPTIONS).map(([k, vals]) => (
+          <div key={k}>
+            <span className="label-like">{t(`st_${k}`)}</span>
+            <div className="chips wrap opt-chips" role="radiogroup" aria-label={t(`st_${k}`)}>
+              {vals.map((v) => <button type="button" key={v} role="radio" aria-checked={f.style[k] === v} className="chip" onClick={() => setF({ ...f, style: { ...f.style, [k]: v } })}>{t(`st_${k}_${v}`)}</button>)}
+            </div>
+          </div>
+        ))}
+        <div>
+          <span className="label-like">{t('st_sections')}</span>
+          <div className="stack tight">
+            {['show_featured', 'show_about', 'show_social'].map((k) => (
+              <label key={k} className="check-row"><input type="checkbox" checked={f.style[k] !== false} onChange={(e) => setF({ ...f, style: { ...f.style, [k]: e.target.checked } })} /> {t(`st_${k}`)}</label>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -214,12 +251,6 @@ export function WebsiteBuilder({ bizId, data, notify }) {
             {f.cover_url && <button type="button" className="link-btn small" onClick={() => setF({ ...f, cover_url: '' })}>{t('webRemoveCover')}</button>}
           </div>
         )}
-        <div>
-          <span className="label-like">{t('webColor')}</span>
-          <div className="swatches" role="radiogroup" aria-label={t('webColor')}>
-            {Object.entries(COLORS).map(([k, hex]) => <button type="button" key={k} role="radio" aria-checked={f.color === k} aria-label={t(`color_${k}`)} className="swatch" style={{ background: hex }} onClick={() => setF({ ...f, color: k })} />)}
-          </div>
-        </div>
         <Field id="wb-about" label={t('webAbout')}><textarea id="wb-about" rows="3" maxLength={400} value={f.about} onChange={set('about')} placeholder={t('webAboutHint')} /></Field>
       </section>
 
@@ -278,41 +309,50 @@ export function WebsiteBuilder({ bizId, data, notify }) {
 }
 
 // ---------- The store itself (public page + preview) ----------
+// CSS variables for a store: brand colour + readable text on it.
+export function storeVars(store) {
+  const hex = api.brandHex(store.color); const on = api.onBrand(hex);
+  // --brand-ink: the brand colour for text on white, or dark text when the brand colour is too light to read.
+  return { '--brand': hex, '--on-brand': on, '--brand-ink': on === '#ffffff' ? hex : '#161616' };
+}
+
 export function StoreView({ store, preview, onPick }) {
   const { t, lang } = useApp();
-  const featured = store.items.filter((i) => i.featured);
-  const socials = ['instagram', 'tiktok', 'facebook'].map((k) => [k, socialUrl(k, store[k])]).filter(([, u]) => u);
+  const st = api.styleOf(store);
+  const featured = st.show_featured ? store.items.filter((i) => i.featured) : [];
+  const socials = st.show_social ? ['instagram', 'tiktok', 'facebook'].map((k) => [k, socialUrl(k, store[k])]).filter(([, u]) => u) : [];
+  const label = (k) => (k === 'instagram' ? 'Instagram' : k === 'tiktok' ? 'TikTok' : 'Facebook');
   const card = (p) => (
     <button type="button" key={p.id} className="store-product" onClick={() => onPick?.(p)} disabled={preview} tabIndex={preview ? -1 : undefined}>
       <span className="ph"><img src={imgSrc(p.image_url)} alt="" loading="lazy" /></span>
-      <b className="pname">{pname(p, lang)}</b>
-      <span className="store-price">{money(p.price, lang)}</span>
+      <span className="store-pinfo"><b className="pname">{pname(p, lang)}</b><span className="store-price">{money(p.price, lang)}</span></span>
     </button>
   );
+  const cover = st.cover !== 'none' && store.cover_url;
   return (
-    <div className={`store tpl-${store.template || 'classic'}`} style={{ '--brand': COLORS[store.color] || COLORS.black }}>
+    <div className={`store font-${st.font} bg-${st.bg} btn-${st.buttons} hd-${st.header} lay-${st.layout} cv-${cover ? st.cover : 'none'}`} style={storeVars(store)}>
       <header className="store-top">
         <span className="store-logo">{store.logo_url ? <img src={store.logo_url} alt="" /> : (store.brand_name || '?').charAt(0).toUpperCase()}</span>
         <b className="store-brand">{store.brand_name}</b>
         {!preview && <LangSwitch />}
       </header>
       <div className="store-hero">
-        {store.cover_url && <img className="store-cover" src={store.cover_url} alt="" />}
+        {cover && <img className="store-cover" src={store.cover_url} alt="" />}
         <div className="store-hero-text">
           <h1>{store.brand_name}</h1>
-          {store.about && <p>{store.about}</p>}
+          {st.show_about && store.about && <p>{store.about}</p>}
         </div>
       </div>
       <p className="store-cod"><Icon name="truck" size={16} /> {t('storeCod')}</p>
       {socials.length > 0 && (
         <div className="store-social">
-          {socials.map(([k, u]) => (preview ? <span key={k} className="chip">{k === 'instagram' ? 'Instagram' : k === 'tiktok' ? 'TikTok' : 'Facebook'}</span>
-            : <a key={k} className="chip" href={u} target="_blank" rel="noopener noreferrer">{k === 'instagram' ? 'Instagram' : k === 'tiktok' ? 'TikTok' : 'Facebook'}</a>))}
+          {socials.map(([k, u]) => (preview ? <span key={k} className="chip">{label(k)}</span>
+            : <a key={k} className="chip" href={u} target="_blank" rel="noopener noreferrer">{label(k)}</a>))}
         </div>
       )}
       {featured.length > 0 && <><h2 className="store-h">{t('storeFeatured')}</h2><div className="store-grid">{featured.map(card)}</div></>}
       <h2 className="store-h">{t('storeAll')}</h2>
-      {store.items.length === 0 ? <p className="muted small">{t('storeEmpty')}</p> : <div className="store-grid">{store.items.map(card)}</div>}
+      {store.items.length === 0 ? <p className="store-empty">{t('storeEmpty')}</p> : <div className="store-grid">{store.items.map(card)}</div>}
       <footer className="store-foot">{t('poweredBy')}</footer>
     </div>
   );
@@ -364,7 +404,7 @@ export function Storefront({ slug }) {
     } catch (er) { setErrs({ form: er.message }); } finally { setBusy(false); }
   }
   return (
-    <div className="store-page">
+    <div className={`store-page store-sheets btn-${api.styleOf(store).buttons}`} style={storeVars(store)}>
       <StoreView store={store} onPick={open} />
       <Sheet open={!!pick} onClose={close} title={pick ? pname(pick, lang) : ''}>
         {pick && (step === 'product' ? (

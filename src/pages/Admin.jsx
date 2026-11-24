@@ -19,7 +19,7 @@ export function Admin({ notify }) {
       {tab === 'Orders' && <AdminOrders notify={notify} />}
       {tab === 'Products' && <AdminProducts notify={notify} />}
       {tab === 'Shipping' && <AdminShipping notify={notify} />}
-      {tab === 'Websites' && <AdminWebsites notify={notify} />}
+      {tab === 'Websites' && <><AdminWebsites notify={notify} /><AdminConnections notify={notify} /></>}
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
       {tab === 'Ideas' && <AdminIdeas notify={notify} />}
       {tab === 'Services' && <AdminServices notify={notify} />}
@@ -49,7 +49,7 @@ function AdminOrders({ notify }) {
         <div className="list">
           {list.map((o) => (
             <div key={o.id} className="card admin-order">
-              <div className="row-between"><b>#{o.order_no} · {o.products?.name_en} × {o.quantity}{o.source === 'website' ? ' · from website' : ''}</b><span className={`pill pill-${o.status}`}>{o.status}</span></div>
+              <div className="row-between"><b>#{o.order_no} · {o.products?.name_en} × {o.quantity}{o.source === 'website' ? ' · from website' : o.source === 'shopify' ? ' · from Shopify' : ''}</b><span className={`pill pill-${o.status}`}>{o.status}</span></div>
               <p className="small">Customer: <b>{o.customer_name}</b> · <span dir="ltr">{o.customer_phone}</span><br />{o.address}, {o.governorate}{o.notes ? ` · Note: ${o.notes}` : ''}</p>
               {o.product_options && <p className="small"><b>Product details:</b> {o.product_options}</p>}
               <p className="small muted">Seller: {o.profiles?.full_name} · {o.profiles?.phone} · Factory {o.products?.factory_code} · {date(o.created_at, 'en')}</p>
@@ -182,6 +182,45 @@ function ProductForm({ product, onClose, onSaved }) {
 
 // Seller websites: requests to accept / reject, live websites to pause, and the delivered-orders condition.
 const WEB_STATUS = { requested: 'Waiting', approved: 'Accepted', rejected: 'Rejected', paused: 'Paused' };
+const CON_STATUS = { requested: 'Waiting', approved: 'Approved', rejected: 'Rejected', paused: 'Paused' };
+function AdminConnections({ notify }) {
+  const { loading, data, error, reload } = useLoad(() => api.adminConnections(), []);
+  const [reasons, setReasons] = useState({});
+  const [busy, setBusy] = useState('');
+  async function decide(c, status) {
+    if ((status === 'rejected' || status === 'paused') && !(reasons[c.id] || '').trim()) { notify('Write a short reason first'); return; }
+    setBusy(c.id);
+    try { await api.adminDecideConnection(c.id, status, reasons[c.id] || ''); notify(`${c.business_name}: ${CON_STATUS[status]}`); setReasons((r) => ({ ...r, [c.id]: '' })); reload(); }
+    catch (e) { notify(e.message); } finally { setBusy(''); }
+  }
+  return (
+    <div className="stack">
+      <div className="section-head"><h2>Connected stores (Shopify)</h2></div>
+      <p className="small muted">Sellers ask to connect their own Shopify store. After you approve, they add a webhook in Shopify and their orders come into Forsa as pending ("from Shopify").</p>
+      {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : (data || []).length === 0 ? <div className="card empty"><p>No connection requests yet.</p></div> : (
+        <div className="list">
+          {data.map((c) => (
+            <div key={c.id} className="card stack admin-web">
+              <div className="row-between"><b>{c.business_name}</b><span className={`pill pill-${c.status === 'approved' ? 'delivered' : c.status === 'requested' ? 'pending' : 'cancelled'}`}>{CON_STATUS[c.status]}{c.status === 'approved' ? (c.has_secret ? ' · set up' : ' · setup not finished') : ''}</span></div>
+              <span className="small muted">{c.owner_name} · Shopify: <code dir="ltr">{c.shop}</code> · requested {date(c.requested_at, 'en')}</span>
+              <p className="small">Delivered orders {c.delivered} · Shopify webhooks received {c.orders_count}{c.last_order_at ? ` (last ${date(c.last_order_at, 'en')})` : ''} · Waiting for seller review {c.review}</p>
+              {c.reason && <p className="small muted">Reason: {c.reason}</p>}
+              {c.status !== 'rejected' && (
+                <Field id={`ac-r-${c.id}`} label="Reason (needed to reject or pause)"><input id={`ac-r-${c.id}`} maxLength={300} value={reasons[c.id] || ''} onChange={(e) => setReasons((r) => ({ ...r, [c.id]: e.target.value }))} /></Field>
+              )}
+              <div className="row">
+                {c.status !== 'approved' && c.status !== 'rejected' && <Button small onClick={() => decide(c, 'approved')} disabled={busy === c.id}>{c.status === 'paused' ? 'Un-pause' : 'Approve'}</Button>}
+                {c.status === 'requested' && <Button small variant="ghost" onClick={() => decide(c, 'rejected')} disabled={busy === c.id}>Reject</Button>}
+                {c.status === 'approved' && <Button small variant="danger" onClick={() => decide(c, 'paused')} disabled={busy === c.id}>Pause</Button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminWebsites({ notify }) {
   const { loading, data, error, reload } = useLoad(() => api.adminWebsites(), []);
   const min = useLoad(() => api.websiteMinOrders(), []);
