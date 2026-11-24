@@ -2,6 +2,18 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.15 — Nov 2026 (product-owner access, by Forsa only)
+- "Add my own product" and "Connect existing website" are no longer open to everyone. They are for customers Forsa
+  made a factory deal with ("product owners").
+- Admin → Sellers → find the user → "Give product-owner access". His NEXT new business gets both features and the
+  access is used up; businesses he creates after that are normal unless the admin gives access again. "Cancel" takes
+  back an unused access. The card shows his product-owner business(es). The admin account follows the same rule.
+- Businesses that already had own products or a connected store kept the features.
+- Enforced in the database: users can't give themselves the access or switch a business's mark; own products and
+  store connections are refused on normal businesses.
+- Admin → Sellers has a search box (name, phone or email).
+- Database: `supabase/v1_15.sql`.
+
 ## Version 1.14 — Nov 2026 (seller's own products + own name & photo on the website)
 - **Add my own product:** in My Business → "My own products" → "+ Add my own product". The seller uploads his own
   photo, name, description, type, his cost per piece and selling price, and sees what Forsa pays him per piece

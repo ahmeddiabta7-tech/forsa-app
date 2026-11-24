@@ -372,13 +372,15 @@ function AdminShipping({ notify }) {
 function AdminSellers({ notify }) {
   const { loading, data, error, reload } = useLoad(() => api.adminSellers(), []);
   const [payFor, setPayFor] = useState(null);
+  const [q, setQ] = useState('');
   const rows = useMemo(() => {
     if (!data) return [];
     return data.profiles.map((p) => {
       const mine = data.orders.filter((o) => o.seller_id === p.id);
       const sum = earningsSummary(mine, data.payouts.filter((x) => x.seller_id === p.id));
       return { ...p, plan: planState(p, mine), orders: mine.length, delivered: mine.filter((o) => o.status === 'delivered').length,
-        earned: sum.earned, locked: sum.locked, fees: sum.fees, paid: sum.paidOut, balance: sum.earned - sum.paidOut };
+        earned: sum.earned, locked: sum.locked, fees: sum.fees, paid: sum.paidOut, balance: sum.earned - sum.paidOut,
+        ownerBiz: (data.ownerBiz || []).filter((b) => b.owner_id === p.id).map((b) => b.name) };
     }).sort((a, b) => b.balance - a.balance);
   }, [data]);
   if (loading) return <Spinner />;
@@ -387,20 +389,43 @@ function AdminSellers({ notify }) {
   return (
     <>
       <div className="stats two"><div className="stat"><span>Sellers</span><b>{rows.length}</b></div><div className="stat"><span>Total balance due</span><b>{money(totalDue, 'en')}</b></div></div>
+      <Field id="sl-q" label="Find a user"><input id="sl-q" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, phone or email" /></Field>
       <div className="list">
-        {rows.map((r) => (
+        {rows.filter((r) => !q.trim() || [r.full_name, r.phone, r.email].some((v) => String(v || '').toLowerCase().includes(q.trim().toLowerCase()))).map((r) => (
           <div key={r.id} className="card">
             <div className="row-between"><b>{r.full_name || r.email}</b><span className={`pill pill-${r.plan.unlocked ? 'delivered' : 'pending'}`}>{r.plan.unlocked ? 'Unlocked' : 'Locked'}</span></div>
             <p className="small muted">{r.plan.unlocked ? `Unlocked until ${date(r.plan.unlockedUntil, 'en')} (${r.plan.daysLeft} days left)` : `Locked · ${r.plan.held}/3 pieces delivered`}</p>
             <p className="small muted">{r.phone} · {r.email} · {r.city}{r.university ? ` · ${r.university}` : ''}</p>
             <p className="small">Orders {r.orders} · Delivered {r.delivered} · Earned {money(r.earned, 'en')} · Locked {money(r.locked, 'en')} · Forsa fees {money(r.fees, 'en')} · Paid {money(r.paid, 'en')} · <b>Due {money(r.balance, 'en')}</b></p>
             <p className="small">{r.payout_method ? <>Pays to: <b>{PAY_METHODS[r.payout_method]}</b> · {r.payout_holder}{r.payout_bank ? ` · ${r.payout_bank}` : ''} · <span dir="ltr">{r.payout_account}</span></> : <span className="muted">No payout details yet</span>}</p>
+            <OwnerAccess r={r} notify={notify} reload={reload} />
             {r.balance > 0 && <Button small onClick={() => setPayFor(r)}>Record payout</Button>}
           </div>
         ))}
       </div>
       <PayoutForm seller={payFor} onClose={() => setPayFor(null)} onSaved={() => { setPayFor(null); notify('Payout recorded'); reload(); }} />
     </>
+  );
+}
+
+// Product-owner access (factory-deal customers): one pass = his NEXT new business gets
+// "Add my own product" + "Connect existing website". Later businesses are normal unless given again.
+function OwnerAccess({ r, notify, reload }) {
+  const [busy, setBusy] = useState(false);
+  async function set(on) {
+    setBusy(true);
+    try { await api.adminSetOwnerPass(r.id, on); notify(on ? 'Access given for his next new business' : 'Access cancelled'); reload(); } catch (e) { notify(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="owner-access">
+      {r.ownerBiz.length > 0 && <p className="small">Product-owner business: <b>{r.ownerBiz.join(', ')}</b></p>}
+      {r.owner_pass ? (
+        <div className="row-between"><span className="pill pill-pending">Access ready for his next new business</span>
+          <button type="button" className="link-btn" disabled={busy} onClick={() => set(false)}>Cancel</button></div>
+      ) : (
+        <Button small variant="ghost" disabled={busy} onClick={() => set(true)}>Give product-owner access</Button>
+      )}
+    </div>
   );
 }
 

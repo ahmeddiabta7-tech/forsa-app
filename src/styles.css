@@ -632,3 +632,7 @@ code.web-link { display: block; max-width: 100%; font-size: 13px; background: va
 .item-look-open { align-self: flex-start; }
 .sold-out { display: inline-block; font-size: 12px; font-weight: 700; color: #b3261e; }
 .sold-out.big { font-size: 15px; text-align: center; padding: 10px; background: #fdecea; border-radius: 10px; }
+
+/* v1.15 product-owner access (admin) */
+.owner-access { display: grid; gap: 6px; margin: 8px 0; justify-items: start; }
+.owner-access .row-between { width: 100%; gap: 8px; }

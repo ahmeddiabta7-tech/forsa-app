@@ -98,7 +98,7 @@ export function WebsiteCard({ business, data, notify }) {
         <div className="or-main"><b>{t('myWebsite')}</b><span className="muted small">{t('webIntro')}</span></div>
       </div>
       {body}
-      <ConnectBox business={business} notify={notify} />
+      {business.product_owner && <ConnectBox business={business} notify={notify} />}
     </div>
   );
 }

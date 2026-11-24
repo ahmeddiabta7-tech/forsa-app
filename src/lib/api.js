@@ -304,14 +304,23 @@ export async function setOrderStatus(id, status) {
 
 export async function adminSellers() {
   if (live) {
-    const [profiles, orders, payouts] = await Promise.all([
+    const [profiles, orders, payouts, ownerBiz] = await Promise.all([
       db.select('profiles', 'select=*&order=created_at.desc&limit=1000'),
       db.select('orders', 'select=seller_id,status,unit_price,wholesale_price,quantity,fee_pct,own_order,profit_locked,delivered_at,updated_at,created_at,products(owner_id)&limit=5000'),
       db.select('payouts', 'select=seller_id,amount&limit=5000'),
+      db.select('businesses', 'select=owner_id,name&product_owner=eq.true&limit=2000'),
     ]);
-    return { profiles, orders, payouts };
+    return { profiles, orders, payouts, ownerBiz };
   }
-  return { profiles: demo.profiles.map(pick), orders: demo.orders.map(withProduct), payouts: demo.payouts };
+  return { profiles: demo.profiles.map(pick), orders: demo.orders.map(withProduct), payouts: demo.payouts,
+    ownerBiz: demo.businesses.filter((b) => b.product_owner).map((b) => ({ owner_id: b.owner_id, name: b.name })) };
+}
+
+// "Product owner" pass: the user's NEXT new business gets "Add my own product" + "Connect existing website".
+export async function adminSetOwnerPass(userId, on) {
+  if (live) return db.rpc('admin_set_owner_pass', { p_user: userId, p_on: !!on });
+  const p = demo.profiles.find((x) => x.id === userId); if (!p) fail('User not found');
+  p.owner_pass = !!on; demoSave();
 }
 
 export async function recordPayout(row) {
@@ -365,7 +374,10 @@ export async function saveBusiness(b) {
   if (live) return b.id ? db.update('businesses', `id=eq.${b.id}`, row) : db.insert('businesses', { ...row, owner_id: getSession()?.user?.id });
   if (b.id) { const x = demo.businesses.find((r) => r.id === b.id); Object.assign(x, row); demoSave(); return x; }
   if (demo.businesses.filter((r) => r.owner_id === meId()).length >= 5) throw new Error('You can have up to 5 businesses');
-  const x = { ...row, id: uid(), owner_id: meId(), created_at: now() }; demo.businesses.push(x); demoSave(); return x;
+  const me = demo.profiles.find((p) => p.id === meId());
+  const x = { ...row, id: uid(), owner_id: meId(), product_owner: !!me?.owner_pass, created_at: now() };
+  if (me) me.owner_pass = false;
+  demo.businesses.push(x); demoSave(); return x;
 }
 
 export async function deleteBusiness(id) {
@@ -826,6 +838,7 @@ export function cleanShop(v) { return String(v || '').trim().toLowerCase().repla
 export async function requestConnection(businessId, shop) {
   if (live) return db.rpc('request_connection', { p_business: businessId, p_shop: shop });
   if (!demo.businesses.some((b) => b.id === businessId && b.owner_id === meId())) fail('This business is not yours');
+  if (!demo.businesses.some((b) => b.id === businessId && b.product_owner)) fail('This feature is only for Forsa product owners. Contact Forsa to get access.');
   const sh = cleanShop(shop);
   if (!/^[a-z0-9][a-z0-9.-]{1,198}[a-z0-9]$/.test(sh) || !sh.includes('.')) fail('Write your Shopify store address, e.g. nour.myshopify.com');
   const c = demo.store_connections.find((x) => x.business_id === businessId);
@@ -910,6 +923,7 @@ export async function createSellerProduct(businessId, f) {
   const c = checkOwnProduct(f);
   if (live) return db.rpc('create_seller_product', { p_business: businessId, p: c });
   if (!demo.businesses.some((b) => b.id === businessId && b.owner_id === meId())) fail('This business is not yours');
+  if (!demo.businesses.some((b) => b.id === businessId && b.product_owner)) fail('This feature is only for Forsa product owners. Contact Forsa to get access.');
   const p = { id: uid(), name_en: c.name, name_ar: c.name, description_en: c.description, description_ar: c.description, category: c.category, factory_code: 'SELLER', region: '',
     quality_score: null, wholesale_price: c.cost, min_price: c.cost, suggested_price: c.price, ship_days: 3, image_url: c.image_url, stock: 0, active: false,
     owner_id: meId(), seller_made: true, review_status: 'pending', review_reason: '', created_at: now() };

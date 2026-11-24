@@ -89,7 +89,7 @@ export function MyBusiness({ id, data, reload, notify, unread = {} }) {
         </div>
       )}
 
-      <OwnProducts key={`own-${current.id}`} business={current} notify={notify} onChanged={reload} />
+      {current.product_owner && <OwnProducts key={`own-${current.id}`} business={current} notify={notify} onChanged={reload} />}
 
       <div className="section-head"><h2>{t('analytics')}</h2></div>
       <Analytics data={data} reload={reload} notify={notify} embedded businessId={current.id}
