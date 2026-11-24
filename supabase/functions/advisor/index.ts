@@ -13,7 +13,7 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 const DEFAULT_MODEL = 'gemini-flash-lite-latest';
-const GEMINI_TIMEOUT_MS = 20000;
+const GEMINI_TIMEOUT_MS = 30000; // plans can take Gemini 20+ seconds
 
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 const round = (n) => Math.round(Number(n) || 0);
@@ -216,7 +216,7 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, fet
         return text || null;
       } catch (e) {
         console.error(`gemini request failed attempt ${attempt + 1}: ${e?.name || 'error'}`);
-        if (attempt === 0) continue;
+        if (attempt === 0 && e?.name !== 'AbortError') continue; // a slow answer is not retried (the seller would wait twice)
         return null;
       } finally { clearTimeout(timer); }
     }

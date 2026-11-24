@@ -6,7 +6,7 @@
 - The AI advisor no longer tells ready-product (dropshipping) sellers to take their own photos or videos — they usually
   don't have the product in hand. It suggests the Forsa product photos, AI-made photos/videos, content that needs no
   product, and (optional) buying one piece to film. Own-brand sellers can still use their own photos. It never offers
-  free delivery (the customer always pays shipping). Gemini errors are now logged (status only). (Edge function only.)
+  free delivery (the customer always pays shipping). Gemini errors are now logged (status only); Gemini gets 30 s (was 20 s) and a slow answer is not retried. (Edge function only.)
 
 ## Version 1.12.1 — Nov 2026 (cleaner business page)
 - My Business: removed the Messages box (Messages is already at the top, next to the account icon).
