@@ -2,6 +2,11 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.12.2 — Nov 2026 (AI advisor: photos for dropshipping)
+- The AI advisor no longer tells ready-product (dropshipping) sellers to take their own photos or videos — they usually
+  don't have the product in hand. It suggests the Forsa product photos, AI-made photos/videos, content that needs no
+  product, and (optional) buying one piece to film. Own-brand sellers can still use their own photos. (Edge function only.)
+
 ## Version 1.12.1 — Nov 2026 (cleaner business page)
 - My Business: removed the Messages box (Messages is already at the top, next to the account icon).
 - The "My website" box moved down: after the AI advisor and just before Smart tips.
