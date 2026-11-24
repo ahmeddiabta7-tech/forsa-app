@@ -202,12 +202,19 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, fet
           headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
           body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents, generationConfig: { temperature: 0.6, maxOutputTokens: 1600 } }),
         });
-        if ((res.status === 429 || res.status >= 500) && attempt === 0) { await new Promise((r) => setTimeout(r, 1500)); continue; }
-        if (!res.ok) return null;
+        if (!res.ok) {
+          // Log only Google's status and short error message (never user data) to find outages in Supabase logs.
+          const err = await res.text().catch(() => '');
+          console.error(`gemini ${res.status} attempt ${attempt + 1}: ${err.slice(0, 300)}`);
+          if ((res.status === 429 || res.status >= 500) && attempt === 0) { await new Promise((r) => setTimeout(r, 1500)); continue; }
+          return null;
+        }
         const data = await res.json();
         const text = (data?.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
+        if (!text) console.error(`gemini empty answer: ${data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || 'unknown'}`);
         return text || null;
-      } catch (_) {
+      } catch (e) {
+        console.error(`gemini request failed attempt ${attempt + 1}: ${e?.name || 'error'}`);
         if (attempt === 0) continue;
         return null;
       } finally { clearTimeout(timer); }
