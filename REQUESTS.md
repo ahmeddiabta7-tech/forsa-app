@@ -100,3 +100,17 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
 - Seller websites, next steps (after v1.12): own domain per seller (nourstore.com); nice link previews on WhatsApp /
   Facebook (needs Forsa's own domain + hosting — Ahmed will buy the domain later); "Connect your outside website":
   Shopify is BUILT (v1.13); still later: Wuilt, WooCommerce, EasyOrders (only if it can send orders automatically).
+- **AI media buying, fully automated (planned Nov 2026; start when Forsa's company registration is almost done —
+  Ahmed will say so).** Services → Media buying → "Make my ad with AI", next to the partner agency (kept for sellers
+  who want a human). Flow: seller connects his Facebook page + Instagram + ad account with Facebook's own login (no
+  password ever shared) → step-by-step questions (product with its photo, goal: orders on his Forsa website or
+  WhatsApp messages, governorates, age, men/women, interests, offer, budget per day, days) → AI (Gemini) writes the
+  ad (audience, 3 Egyptian-Arabic texts) with a preview → seller taps "Start my ad" (his approval) → published on
+  Facebook + Instagram with a hard spending limit in Meta → daily auto-check: reads results, pauses weak ads, stops at
+  budget/end date, shows spent / messages / orders. Seller pays Meta with HIS OWN card; Forsa never holds ad money.
+  **Free at first** (a fee may come later, on the amount actually spent). Light on our servers (Meta does the heavy work).
+  Needs first: Forsa Facebook page + Meta Business account (from Ahmed's personal Facebook), Meta developer app
+  (Claude guides; Ahmed pastes the app secret into Supabase himself), test on Ahmed's own page/ad account with a small
+  budget, privacy policy + terms pages (Claude writes), then Meta business verification (commercial register + tax
+  card) and app review (screen recording) — a few weeks, Meta decides; refusals are usually fixable. If refused or
+  slow, the AI ad plan still works without Meta (seller publishes it himself, step by step). TikTok later.
