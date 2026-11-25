@@ -2,6 +2,16 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.16 — Nov 2026 (full audit + one fix)
+- Full audit: build, English/Arabic texts (677 = 677, none missing), no secrets in the code (public anon key only), no
+  debug leftovers, user links checked; fresh database install runs twice without errors; every table has row-level
+  security; every security-definer function has a fixed search_path; attack tests as a normal seller all blocked
+  (other sellers' data, making himself admin, payouts, prices, fees, delivered status, admin functions); live database:
+  logged-out visitors are refused on every table; live app: all pages and admin tabs open without errors.
+- Fix: AI advisor now counts attempts before asking Google (max 2x the daily limit, admin unlimited), so many requests
+  at the same moment can't use up Forsa's shared free Google allowance. Answers are still charged only when they work.
+- Database: `supabase/v1_16.sql`; edge function `advisor` updated.
+
 ## Version 1.15 — Nov 2026 (product-owner access, by Forsa only)
 - "Add my own product" and "Connect existing website" are no longer open to everyone. They are for customers Forsa
   made a factory deal with ("product owners").

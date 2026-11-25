@@ -265,6 +265,11 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, fet
       const contents = [...history].reverse().map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.body }] }));
       contents.push({ role: 'user', parts: [{ text: `Seller numbers (JSON, anonymous):\n${JSON.stringify(summary)}\n\nSeller's message: ${asked}` }] });
 
+      // Count the attempt before Google is asked (capped at 2x the daily limit), so many requests at once
+      // can't use up Forsa's shared free Google allowance. Answers are still charged only when they succeed.
+      try { await rest(token, 'rpc/ai_try', { method: 'POST', body: {} }); }
+      catch (_) { return json(429, { code: 'limit', remaining: 0 }); }
+
       const answer = await askGemini(systemPrompt(lang), contents);
       if (!answer) return json(503, { code: 'ai_unavailable' });
 
