@@ -69,7 +69,7 @@ export default function App() {
   // Route guards
   useEffect(() => {
     if (booting) return;
-    if (route.startsWith('/s/')) return; // public seller websites: open for everyone
+    if (route.startsWith('/s/') || LEGAL[route]) return; // public seller websites + privacy/terms pages: open for everyone
     if (!profile && !PUBLIC.includes(route)) go('/');
     if (profile && PUBLIC.includes(route)) go('/home');
     if (profile && route.startsWith('/admin') && profile.role !== 'admin') go('/home');
