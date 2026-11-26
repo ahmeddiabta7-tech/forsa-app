@@ -13,11 +13,12 @@ const errText = (t, e) => (e?.code === 'limit' ? t('adLimit') : e?.code === 'ai_
 
 export function AdsPage({ sub, data, notify }) {
   if (sub === 'new') return <AdWizard data={data} notify={notify} />;
+  if (sub && sub.startsWith('fb-')) return <AdsHome data={data} notify={notify} fb={sub.slice(3)} />;
   if (sub) return <AdPlanView id={sub} data={data} notify={notify} />;
   return <AdsHome data={data} notify={notify} />;
 }
 
-function AdsHome({ data, notify }) {
+function AdsHome({ data, notify, fb }) {
   const { t, lang } = useApp();
   const plans = useLoad(() => api.myAdPlans(), []);
   const quota = useLoad(() => api.adQuota(), []);
@@ -32,6 +33,7 @@ function AdsHome({ data, notify }) {
         <Button block onClick={() => go('/ads/new')}><Icon name="sparkle" size={18} /> {t('aiAdsNew')}</Button>
         {quota.data != null && quota.data < 9999 && <p className="small muted">{t('adLeftToday', { n: num(quota.data, lang) })}</p>}
       </div>
+      {api.metaEnabled() && (data.businesses || []).length > 0 && <FacebookCard businesses={data.businesses} notify={notify} fb={fb} />}
       {(data.businesses || []).length > 0 && <BrandMemory businesses={data.businesses} notify={notify} />}
       {plans.loading ? <Spinner /> : plans.error ? <ErrorBox error={plans.error} onRetry={plans.reload} /> : (plans.data || []).length > 0 && (
         <>
@@ -374,7 +376,7 @@ function AdPlanView({ id, notify }) {
       <div className="row-between"><h1 className="page-title">{p.product_name}</h1><span className={`pill ${STATUS_PILL[r.status]}`}>{t(`adSt_${r.status}`)}</span></div>
       <p className="small muted">{p.business_name} · {date(r.created_at, lang)}{r.revisions ? ` · ${t('adRevisions', { n: num(r.revisions, lang) })}` : ''}</p>
 
-      {r.status === 'approved' && mine && <PublishSteps />}
+      {r.status !== 'draft' && mine && (api.metaEnabled() ? <LiveAd row={r} notify={notify} onChange={row.reload} /> : r.status === 'approved' && <PublishSteps />)}
 
       <div className="ink-card">
         <span className="eyebrow">{t('adYouGetPiece')}</span>
@@ -452,6 +454,156 @@ function PublishSteps() {
       <h3><Icon name="check" /> {t('adApprovedTitle')}</h3>
       <p className="small">{t('adAutoSoon')}</p>
       <ol className="small own-steps"><li>{t('adNext1')}</li><li>{t('adNext2')}</li><li>{t('adNext3')}</li></ol>
+    </div>
+  );
+}
+
+// ---------- Facebook: connect once, choose the page + ad account per business ----------
+function FacebookCard({ businesses, notify, fb }) {
+  const { t } = useApp();
+  const st = useLoad(() => api.metaStatus(), []);
+  const [busy, setBusy] = useState('');
+  async function connect() {
+    setBusy('connect');
+    try { const url = await api.metaLoginUrl(); window.location.href = url; if (url.startsWith('#')) st.reload(); } catch (e) { notify(e.message); } finally { setBusy(''); }
+  }
+  async function disconnect() {
+    if (!window.confirm(t('fbDisconnectConfirm'))) return;
+    setBusy('disconnect');
+    try { await api.disconnectMeta(); notify(t('fbDisconnected')); st.reload(); } catch (e) { notify(e.message); } finally { setBusy(''); }
+  }
+  if (st.loading) return <Spinner />;
+  const c = st.data?.connection;
+  return (
+    <>
+      <div className="section-head"><h2>{t('fbTitle')}</h2></div>
+      <div className="card stack fb-card">
+        {fb === 'error' && <p className="form-error" role="alert">{t('fbError')}</p>}
+        {fb === 'cancelled' && <p className="small muted" role="status">{t('fbCancelled')}</p>}
+        {!c ? (
+          <>
+            <p className="small">{t('fbLead')}</p>
+            <ul className="ticks small"><li><Icon name="check" size={16} />{t('fbPoint1')}</li><li><Icon name="check" size={16} />{t('fbPoint2')}</li><li><Icon name="check" size={16} />{t('fbPoint3')}</li></ul>
+            <Button block disabled={!!busy} onClick={connect}>{busy ? t('loading') : t('fbConnect')}</Button>
+          </>
+        ) : (
+          <>
+            <p className="small"><Icon name="check" size={16} /> {t('fbConnectedAs', { n: c.fb_name || 'Facebook' })}</p>
+            {fb === 'connected' && <p className="small" role="status">{t('fbNowChoose')}</p>}
+            {businesses.map((b) => <PagePicker key={b.id} business={b} conn={c} link={(st.data.links || []).find((l) => l.business_id === b.id)} notify={notify} onSaved={st.reload} />)}
+            <button type="button" className="link-btn small" disabled={!!busy} onClick={disconnect}>{t('fbDisconnect')}</button>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+function PagePicker({ business, conn, link, notify, onSaved }) {
+  const { t } = useApp();
+  const [page, setPage] = useState(link?.page_id || conn.pages?.[0]?.id || '');
+  const [acct, setAcct] = useState(link?.ad_account_id || (conn.ad_accounts || []).find((a) => a.currency === 'EGP')?.id || conn.ad_accounts?.[0]?.id || '');
+  const [busy, setBusy] = useState(false);
+  const chosen = (conn.ad_accounts || []).find((a) => a.id === acct);
+  async function save() {
+    setBusy(true);
+    try { await api.saveMetaLink(business.id, page, acct); notify(t('fbSaved')); onSaved(); } catch (e) { notify(e.message); } finally { setBusy(false); }
+  }
+  if (!(conn.pages || []).length) return <p className="small form-error">{t('fbNoPages')}</p>;
+  if (!(conn.ad_accounts || []).length) return <p className="small form-error">{t('fbNoAccounts')}</p>;
+  const changed = !link || link.page_id !== page || link.ad_account_id !== acct;
+  return (
+    <div className="page-picker stack">
+      <b className="small">{business.name}</b>
+      <Field id={`pp-page-${business.id}`} label={t('fbPage')}>
+        <select id={`pp-page-${business.id}`} value={page} onChange={(e) => setPage(e.target.value)}>{conn.pages.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+      </Field>
+      <Field id={`pp-acct-${business.id}`} label={t('fbAdAccount')}>
+        <select id={`pp-acct-${business.id}`} value={acct} onChange={(e) => setAcct(e.target.value)}>{conn.ad_accounts.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>)}</select>
+      </Field>
+      {chosen && chosen.currency !== 'EGP' && <p className="small form-error">{t('fbNeedEgp', { c: chosen.currency })}</p>}
+      {link && !changed ? <p className="small"><Icon name="check" size={16} /> {t('fbReady')}</p>
+        : <Button small disabled={busy} onClick={save}>{busy ? t('loading') : t('fbUseThese')}</Button>}
+    </div>
+  );
+}
+
+// ---------- After approval: publish, then live results with the AI's decisions ----------
+function LiveAd({ row: r, notify, onChange }) {
+  const { t, lang } = useApp();
+  const st = useLoad(() => api.metaStatus(), []);
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const p = r.plan || {}; const m = r.meta || {}; const res = r.results || {};
+  const run = async (kind, fn, ok) => {
+    setBusy(kind); setErr('');
+    try { await fn(); if (ok) notify(ok); onChange(); } catch (e) { setErr(e.message); } finally { setBusy(''); }
+  };
+  if (st.loading) return <Spinner />;
+  const conn = st.data?.connection; const link = (st.data?.links || []).find((l) => l.business_id === r.business_id);
+
+  if (r.status === 'approved') {
+    return (
+      <div className="card stack publish-card">
+        <h3><Icon name="check" /> {t('adApprovedTitle')}</h3>
+        {!conn ? (
+          <><p className="small">{t('fbConnectToPublish')}</p><Button block onClick={() => go('/ads')}>{t('fbConnect')}</Button></>
+        ) : !link ? (
+          <><p className="small">{t('fbChooseToPublish')}</p><Button block onClick={() => go('/ads')}>{t('fbChoosePage')}</Button></>
+        ) : (
+          <>
+            <p className="small">{t('fbPublishOn', { p: link.page_name, a: link.ad_account_name })}</p>
+            <p className="small muted">{t('fbPublishNote', { n: money(p.budget?.total || 0, lang), d: num(p.budget?.days || 0, lang) })}</p>
+            <Button block disabled={!!busy} onClick={() => run('publish', () => api.publishAd(r.id), t('fbPublished'))}>{busy ? t('fbPublishing') : t('fbPublishNow')}</Button>
+          </>
+        )}
+        {err && <p className="form-error" role="alert">{err}</p>}
+      </div>
+    );
+  }
+
+  const msg = p.objective !== 'website_sales';
+  const total = m.lifetime_budget || p.budget?.total || 0;
+  const spent = res.spend || 0;
+  const be = p.math?.break_even_cpa || 0;
+  const good = res.cpa != null && res.cpa <= be;
+  const rec = m.recommendation;
+  return (
+    <div className="card stack live-ad">
+      <div className="row-between"><h3>{r.status === 'running' ? t('liveRunning') : r.status === 'done' ? t('liveDone') : t('liveStopped')}</h3>
+        {r.status === 'running' && <span className="pill pill-confirmed">● {t('live')}</span>}</div>
+      <div className="meter" role="img" aria-label={t('liveSpent', { s: money(spent, lang), t: money(total, lang) })}><span style={{ width: `${Math.min(100, total ? (spent / total) * 100 : 0)}%` }} /></div>
+      <p className="small">{t('liveSpent', { s: money(spent, lang), t: money(total, lang) })}</p>
+      <div className="live-stats">
+        {msg && <div><b>{num(res.messages || 0, lang)}</b><span className="small muted">{t('liveMessages')}</span></div>}
+        <div><b>{num(res.orders || 0, lang)}</b><span className="small muted">{t('liveOrders')}</span></div>
+        <div><b>{res.cpa != null ? money(res.cpa, lang) : '—'}</b><span className="small muted">{t('liveCpa')}</span></div>
+        <div><b>{num(res.clicks || 0, lang)}</b><span className="small muted">{t('liveClicks')}</span></div>
+      </div>
+      {res.cpa != null && <p className={`small ${good ? '' : 'form-error'}`}>{good ? t('liveGood', { b: money(be, lang) }) : t('liveBad', { b: money(be, lang) })}</p>}
+      {msg && <p className="small muted">{t('liveMsgNote')}</p>}
+      {(m.ads || []).length > 0 && (
+        <ul className="live-ads small">
+          {m.ads.map((a) => <li key={a.id}><span>{a.angle}</span><span className={`pill ${a.status === 'PAUSED' ? 'pill-cancelled' : 'pill-delivered'}`}>{a.status === 'PAUSED' ? t('adPausedByAi') : t('adActive')}</span></li>)}
+        </ul>
+      )}
+      {(m.notes || []).slice(-3).map((n, i) => <p key={i} className="small ai-note"><Icon name="sparkle" size={14} /> {t(`aiNote_${n.code}`, { a: n.angle || '', p: num(n.pct || 0, lang), e: money(n.egp || 0, lang) })}</p>)}
+      {r.status === 'running' && rec?.type === 'scale' && (
+        <div className="card rec-card stack">
+          <b>{t('recScaleTitle', { p: num(rec.pct, lang) })}</b>
+          <p className="small">{t('recScaleWhy', { c: money(res.cpa || 0, lang), b: money(be, lang), e: money(Math.round(total * rec.pct / 100), lang) })}</p>
+          <Button small disabled={!!busy} onClick={() => run('scale', () => api.scaleAd(r.id, rec.pct), t('recScaled'))}>{t('recScaleBtn', { p: num(rec.pct, lang) })}</Button>
+        </div>
+      )}
+      {rec?.type === 'rethink' && <div className="card warn-card"><Icon name="alert" /> <span className="small">{t('recRethink')}</span></div>}
+      {r.status === 'running' && (
+        <div className="row-between">
+          <Button small variant="ghost" disabled={!!busy} onClick={() => run('review', () => api.reviewAd(r.id), t('liveUpdated'))}>{busy === 'review' ? t('loading') : t('liveRefresh')}</Button>
+          <button type="button" className="link-btn small" disabled={!!busy} onClick={() => { if (window.confirm(t('stopConfirm'))) run('stop', () => api.stopAd(r.id), t('adStopped')); }}>{t('stopAd')}</button>
+        </div>
+      )}
+      {r.last_review_at && <p className="small muted">{t('liveLastCheck', { d: date(r.last_review_at, lang) })}</p>}
+      {err && <p className="form-error" role="alert">{err}</p>}
     </div>
   );
 }

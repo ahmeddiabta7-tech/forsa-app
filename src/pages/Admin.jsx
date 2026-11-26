@@ -21,7 +21,7 @@ export function Admin({ notify }) {
       {tab === 'Shipping' && <AdminShipping notify={notify} />}
       {tab === 'Websites' && <><AdminWebsites notify={notify} /><AdminConnections notify={notify} /></>}
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
-      {tab === 'AI ads' && <><AdminAdPlans /><AdminAdLessons notify={notify} /></>}
+      {tab === 'AI ads' && <><AdminAdPlans /><AdminFacebook notify={notify} /><AdminAdLessons notify={notify} /></>}
       {tab === 'Ideas' && <AdminIdeas notify={notify} />}
       {tab === 'Services' && <AdminServices notify={notify} />}
       {tab === 'Partners' && <AdminPartners notify={notify} />}
@@ -818,7 +818,8 @@ function AdminAdPlans() {
             <button type="button" key={p.id} className="order-row" onClick={() => go(`/ads/${p.id}`)}>
               {p.plan?.image_url ? <img src={imgSrc(p.plan.image_url)} alt="" /> : null}
               <span className="or-main"><b>{p.plan?.product_name || 'Ad plan'} · {p.profiles?.full_name || 'Seller'}</b>
-                <span className="small muted">{date(p.created_at, 'en')} · {money(p.plan?.budget?.total || 0, 'en')} · {p.plan?.objective || ''}{p.revisions ? ` · ${p.revisions} changes` : ''}</span>
+                <span className="small muted">{date(p.created_at, 'en')} · {money(p.plan?.budget?.total || 0, 'en')} · {p.answers?.strategy?.title || p.plan?.objective || ''}{p.revisions ? ` · ${p.revisions} changes` : ''}</span>
+                {p.results?.spend != null && <span className="small">Spent {money(p.results.spend, 'en')} · {p.results.orders || 0} orders{p.results.messages ? ` · ${p.results.messages} messages` : ''}{p.results.cpa != null ? ` · ${money(p.results.cpa, 'en')}/order` : ''}</span>}
                 {p.feedback_note && <span className="small">“{p.feedback_note}”</span>}</span>
               <span className="or-side"><span className="pill pill-pending">{p.status}</span>{p.feedback === 1 ? <span>👍</span> : p.feedback === -1 ? <span>👎</span> : null}</span>
             </button>
@@ -860,6 +861,37 @@ function AdminAdLessons({ notify }) {
               <div className="row-between"><b>{l.category}{l.evidence ? ` · ${l.evidence} ads` : ''}</b><span className={`pill ${l.active ? 'pill-delivered' : 'pill-cancelled'}`}>{l.active ? 'On' : 'Off'}</span></div>
               <p className="small">{l.lesson}</p>
               <button type="button" className="link-btn" onClick={() => toggle(l)}>{l.active ? 'Turn off' : 'Turn on'}</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// Sellers who connected Facebook, and the daily AI review (runs by itself every day once the schedule is on).
+function AdminFacebook({ notify }) {
+  const { loading, error, data, reload } = useLoad(() => api.adminMetaConnections(), []);
+  const [busy, setBusy] = useState(false);
+  if (!api.metaEnabled()) {
+    return (<><div className="section-head"><h2>Facebook publishing</h2></div>
+      <div className="card"><p className="small">Switched off until Forsa’s Meta app is ready (META_APP_ID). Sellers can make, change and approve AI plans now; publishing starts on Meta day.</p></div></>);
+  }
+  async function review() {
+    setBusy(true);
+    try { const r = await api.adminReviewAll(); notify(`AI review done: ${r.reviewed} ads checked${r.failed ? `, ${r.failed} failed` : ''}`); } catch (e) { notify(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <>
+      <div className="section-head"><h2>Facebook connections ({(data || []).length})</h2></div>
+      <Button small variant="ghost" disabled={busy} onClick={review}>{busy ? 'Checking…' : 'Run the AI review now'}</Button>
+      {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : (data || []).length === 0 ? <div className="card empty"><p>No seller connected Facebook yet.</p></div> : (
+        <div className="list">
+          {data.map((c) => (
+            <div key={c.owner_id} className="card admin-web">
+              <div className="row-between"><b>{c.profiles?.full_name || 'Seller'} · {c.fb_name}</b><span className="small muted">{date(c.connected_at, 'en')}</span></div>
+              <p className="small">{(c.pages || []).length} pages · {(c.ad_accounts || []).map((a) => `${a.name} (${a.currency})`).join(', ') || 'no ad account'}</p>
+              {c.expires_at && <p className="small muted">Access until {date(c.expires_at, 'en')}</p>}
             </div>
           ))}
         </div>

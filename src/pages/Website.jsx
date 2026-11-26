@@ -424,7 +424,7 @@ export function Storefront({ slug }) {
     setErrs(e); if (Object.keys(e).length) return;
     setBusy(true);
     try {
-      const n = await api.placeStoreOrder({ slug: store.slug, product_id: pick.id, quantity: qty, name: f.name.trim(), phone, governorate: f.governorate, address: f.address.trim(), options: f.options.trim(), hp: f.hp });
+      const n = await api.placeStoreOrder({ slug: store.slug, product_id: pick.id, quantity: qty, name: f.name.trim(), phone, governorate: f.governorate, address: f.address.trim(), options: f.options.trim(), hp: f.hp, ad: api.adRef() });
       setDone({ n, product: pick, qty, total: pick.price * qty + (rate?.fee || 0) });
       setPick(null); setF(EMPTY);
     } catch (er) { setErrs({ form: er.message }); } finally { setBusy(false); }

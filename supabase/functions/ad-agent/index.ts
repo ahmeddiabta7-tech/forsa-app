@@ -491,7 +491,7 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, app
       if (!plan) return json(503, { code: 'ai_unavailable' });
       const { age_min, age_max } = AGE_RANGE(answers.ages);
       const full = { ...plan, math, link: site, audience: { all_egypt: answers.all_egypt, governorates: answers.governorates, age_min, age_max, gender: answers.gender, interests: plan.interests },
-        budget: { daily: answers.daily, days: answers.days, total: answers.daily * answers.days }, image_url: product.image_url, product_name: product.name_en, business_name: biz.name, used_photo: !!img,
+        budget: { daily: answers.daily, days: answers.days, total: answers.daily * answers.days }, image_url: product.image_url, product_name: product.name_en, category: product.category || 'Other', business_name: biz.name, used_photo: !!img,
         strategy: choice.strategy, touch: choice.touch };
 
       let saved;

@@ -683,3 +683,16 @@ code.web-link { display: block; max-width: 100%; font-size: 13px; background: va
 .memory-line { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border-style: dashed; }
 .memory-list { margin: 0; padding-inline-start: 18px; display: grid; gap: 8px; }
 .memory-list li { overflow-wrap: anywhere; }
+
+/* v1.19 Facebook connection + live ads */
+.fb-card .ticks { margin: 0; }
+.page-picker { border-top: 1px solid var(--line-2); padding-top: 12px; }
+.meter { height: 8px; border-radius: 8px; background: var(--line-2); overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--ink); }
+.live-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+.live-stats > div { display: grid; gap: 2px; background: var(--bg, #f6f3ee); border-radius: 12px; padding: 10px 12px; }
+.live-stats b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.live-ads { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.live-ads li { display: flex; justify-content: space-between; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.ai-note { display: flex; gap: 6px; align-items: flex-start; margin: 0; }
+.rec-card { border: 1.5px solid var(--ink); }

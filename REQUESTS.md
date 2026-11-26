@@ -114,3 +114,10 @@ Everything else in the app stays as it is (no new tabs, Make your own unchanged)
   budget, privacy policy + terms pages (Claude writes), then Meta business verification (commercial register + tax
   card) and app review (screen recording) — a few weeks, Meta decides; refusals are usually fixable. If refused or
   slow, the AI ad plan still works without Meta (seller publishes it himself, step by step). TikTok later.
+
+- **AI media buyer status (27 Nov 2026):** steps 1–3 built and deployed (questions, 3 strategies + touch, brand memory,
+  AI plan, approval, Facebook connection, automatic publishing, daily AI review, admin follow-up). Only **Meta day** is
+  left (see META_DAY.md): Ahmed's Facebook account was locked for 1–2 days after too many password tries; when it's back,
+  he creates the Meta app and pastes the secret, Claude switches it on and tests with his page, then adds pilot testers.
+  Backup if Meta requires business verification before test ads: Forsa requests partner access to the seller's page and
+  ad account (seller taps Approve once in Facebook) and publishes on his page.

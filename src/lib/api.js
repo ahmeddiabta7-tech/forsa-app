@@ -1,7 +1,7 @@
 // All data access for the app. Uses Supabase when configured, otherwise a local demo store.
 import { isConfigured, db, storage, auth, getSession, invokeFunction } from './supa.js';
 import { DEMO_PRODUCTS, DEMO_MANUFACTURERS } from './demo.js';
-import { PLAN, SUPABASE_URL } from '../config.js';
+import { PLAN, SUPABASE_URL, META_APP_ID } from '../config.js';
 import { GOVERNORATES } from './i18n.js';
 import { demoAdPlan, demoStrategies, AD_DAILY_LIMIT, AD_AGES, AD_GOALS, AD_TONES } from './ads.js';
 
@@ -22,7 +22,7 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
-  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites', 'store_connections', 'external_orders', 'ad_plans', 'ad_lessons', 'brand_memory'].forEach((k) => { if (!d[k]) d[k] = []; });
+  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites', 'store_connections', 'external_orders', 'ad_plans', 'ad_lessons', 'brand_memory', 'meta_connections', 'meta_links'].forEach((k) => { if (!d[k]) d[k] = []; });
   d.orders.forEach((o) => { if (o.status === 'on_hold') o.status = 'pending'; }); // old demo data
   if (!d.settings) d.settings = { website_min_orders: 20 };
   if (!d.shipping_rates) d.shipping_rates = GOVERNORATES.map(([g]) => ({ governorate: g, fee: 70, active: true }));
@@ -805,8 +805,20 @@ export function storeView(w, products = live ? [] : demo.products, shipping = li
     shipping: shipping.filter((r) => r.active !== false).map((r) => ({ governorate: r.governorate, fee: r.fee })) };
 }
 
-export async function placeStoreOrder({ slug, product_id, quantity, name, phone, governorate, address, options = '', hp = '' }) {
-  if (live) return db.rpc('place_store_order', { p_slug: slug, p_product: product_id, p_qty: quantity, p_name: name, p_phone: phone, p_governorate: governorate, p_address: address, p_options: options, p_hp: hp });
+// The ad a visitor came from (?fad=<plan id> on the ad link), kept for this visit so the order is credited to the ad.
+export function adRef() {
+  try {
+    const q = new URLSearchParams(window.location.search).get('fad');
+    if (q && /^[0-9a-f-]{36}$|^[a-z0-9]{8,24}$/i.test(q)) sessionStorage.setItem('forsa-fad', q);
+    return sessionStorage.getItem('forsa-fad') || '';
+  } catch { return ''; }
+}
+
+export async function placeStoreOrder({ slug, product_id, quantity, name, phone, governorate, address, options = '', hp = '', ad = '' }) {
+  if (live) {
+    const args = { p_slug: slug, p_product: product_id, p_qty: quantity, p_name: name, p_phone: phone, p_governorate: governorate, p_address: address, p_options: options, p_hp: hp };
+    return /^[0-9a-f-]{36}$/i.test(ad) ? db.rpc('place_store_order_ad', { ...args, p_ad: ad }) : db.rpc('place_store_order', args);
+  }
   if (hp) fail('Invalid request');
   const w = demo.websites.find((x) => x.slug === cleanSlug(slug) && x.status === 'approved' && x.published) || fail('This store is not available');
   const it = w.items.find((i) => i.product_id === product_id) || fail('This product is not available');
@@ -821,6 +833,8 @@ export async function placeStoreOrder({ slug, product_id, quantity, name, phone,
   if (recent.filter((o) => Date.now() - Date.parse(o.created_at) < 36e5).length >= 30) fail('This store is busy right now. Please try again later.');
   const o = demoCreateOrder({ product_id, business_id: w.business_id, quantity, unit_price: Math.max(it.price, p.min_price), customer_name: String(name).trim().slice(0, 80),
     customer_phone: `0${c}`, governorate, address: String(address).trim().slice(0, 300), product_options: options, notes: '', source: 'website' }, w.owner_id);
+  const plan = ad && demo.ad_plans.find((p) => p.id === ad && p.business_id === w.business_id && ['approved', 'running', 'done'].includes(p.status));
+  if (plan) { const stored = demo.orders.find((x) => x.id === o.id); if (stored) { stored.ad_plan_id = plan.id; demoSave(); } }
   return o.order_no;
 }
 
@@ -1114,4 +1128,111 @@ export async function saveBrandNotes(businessId, notes) {
   const m = demo.brand_memory.find((x) => x.business_id === businessId);
   if (m) Object.assign(m, { notes: clean, updated_at: now() }); else demo.brand_memory.push({ business_id: businessId, owner_id: meId(), notes: clean, updated_at: now() });
   demoSave();
+}
+
+// ---------- Facebook connection + automatic publishing (switched on by META_APP_ID) ----------
+// Live: the "meta-ads" Edge Function. Demo: a pretend Facebook (turn it on with localStorage 'forsa-meta-demo' = '1')
+// so every screen can be tested before Forsa's Meta app exists.
+export function metaEnabled() {
+  if (live) return !!META_APP_ID;
+  try { return !!META_APP_ID || localStorage.getItem('forsa-meta-demo') === '1'; } catch { return !!META_APP_ID; }
+}
+const metaErr = (e) => { const x = new Error(e?.message || 'Facebook error'); x.code = e?.code; return x; };
+async function metaCall(body) {
+  try { return await invokeFunction('meta-ads', body, 90000); } catch (e) { throw metaErr(e); }
+}
+
+export async function metaStatus() {
+  if (live) {
+    const [c, links] = await Promise.all([
+      db.select('meta_connections', `select=fb_name,pages,ad_accounts,expires_at,connected_at&owner_id=eq.${getSession()?.user?.id}`),
+      db.select('meta_links', `select=business_id,page_id,page_name,ad_account_id,ad_account_name,currency&owner_id=eq.${getSession()?.user?.id}`),
+    ]);
+    return { connection: c[0] || null, links };
+  }
+  const c = demo.meta_connections.find((x) => x.owner_id === meId());
+  return { connection: c ? { ...c } : null, links: demo.meta_links.filter((l) => l.owner_id === meId()).map((l) => ({ ...l })) };
+}
+
+export async function metaLoginUrl(businessId) {
+  if (live) return (await metaCall({ action: 'login_url', business_id: businessId || null })).url;
+  // Demo: pretend Facebook said yes.
+  const c = { owner_id: meId(), fb_name: demo.profiles.find((p) => p.id === meId())?.full_name || 'You', connected_at: now(), expires_at: new Date(Date.now() + 60 * 864e5).toISOString(),
+    pages: [{ id: 'pg_demo1', name: 'My Brand Page', ig: 'ig_demo' }, { id: 'pg_demo2', name: 'Second Page' }],
+    ad_accounts: [{ id: 'act_demo1', name: 'My ad account', currency: 'EGP', status: 1 }, { id: 'act_demo2', name: 'Old USD account', currency: 'USD', status: 1 }] };
+  demo.meta_connections = demo.meta_connections.filter((x) => x.owner_id !== meId()); demo.meta_connections.push(c); demoSave();
+  return '#/ads/fb-connected';
+}
+
+export async function saveMetaLink(businessId, pageId, adAccountId) {
+  if (live) return db.upsert('meta_links', { business_id: businessId, owner_id: getSession()?.user?.id, page_id: pageId, ad_account_id: adAccountId }, 'business_id');
+  const c = demo.meta_connections.find((x) => x.owner_id === meId()) || fail('Connect Facebook first');
+  const pg = c.pages.find((p) => p.id === pageId) || fail('Choose one of your Facebook pages');
+  const ac = c.ad_accounts.find((a) => a.id === adAccountId) || fail('Choose one of your ad accounts');
+  if (!demo.businesses.some((b) => b.id === businessId && b.owner_id === meId())) fail('not_found');
+  demo.meta_links = demo.meta_links.filter((l) => l.business_id !== businessId);
+  demo.meta_links.push({ business_id: businessId, owner_id: meId(), page_id: pg.id, page_name: pg.name, ad_account_id: ac.id, ad_account_name: ac.name, currency: ac.currency });
+  demoSave();
+}
+
+export async function disconnectMeta() {
+  if (live) return metaCall({ action: 'disconnect' });
+  demo.ad_plans.filter((p) => p.owner_id === meId() && p.status === 'running').forEach((p) => { p.status = 'stopped'; });
+  demo.meta_connections = demo.meta_connections.filter((x) => x.owner_id !== meId());
+  demo.meta_links = demo.meta_links.filter((x) => x.owner_id !== meId()); demoSave();
+}
+
+const demoPlanOwned = (id) => demo.ad_plans.find((x) => x.id === id && x.owner_id === meId()) || fail('not_found');
+export async function publishAd(planId) {
+  if (live) return (await metaCall({ action: 'publish', plan_id: planId })).plan;
+  const p = demoPlanOwned(planId);
+  if (p.status !== 'approved') fail('Approve the plan first');
+  const link = demo.meta_links.find((l) => l.business_id === p.business_id) || fail('Choose your Facebook page and ad account first');
+  if (link.currency !== 'EGP') { const e = new Error(`Your ad account uses ${link.currency}. Forsa's AI needs an ad account in Egyptian pounds (EGP).`); e.code = 'currency'; throw e; }
+  const days = p.plan.budget?.days || 5;
+  p.status = 'running';
+  p.meta = { campaign_id: `c_${uid()}`, adset_id: `s_${uid()}`, page_id: link.page_id, ad_account_id: link.ad_account_id, lifetime_budget: p.plan.budget?.total || 0,
+    ads: (p.plan.ads || []).map((a, i) => ({ id: `ad_${i}_${uid()}`, angle: a.angle, status: 'ACTIVE' })), published_at: now(), end_time: new Date(Date.now() + days * 864e5).toISOString(), notes: [], recommendation: null };
+  p.results = { spend: 0 }; p.last_review_at = now(); demoSave(); return { ...p };
+}
+// Demo review: pretend 3 days passed — the 2nd ad got nothing and is paused, the AI recommends +20%.
+export async function reviewAd(planId) {
+  if (live) return (await metaCall({ action: 'review', plan_id: planId })).plan;
+  const p = demoPlanOwned(planId); if (p.status !== 'running') fail('not_running');
+  const be = p.plan.math?.break_even_cpa || 100;
+  p.meta.ads = p.meta.ads.map((a, i) => ({ ...a, spend: i === 1 ? be * 2 : be * 1.5, messages: i === 1 ? 0 : 10, clicks: i === 1 ? 4 : 60, impressions: 5000, status: i === 1 ? 'PAUSED' : a.status }));
+  const spend = p.meta.ads.reduce((s, a) => s + a.spend, 0); const messages = p.meta.ads.reduce((s, a) => s + a.messages, 0);
+  const orders = demo.orders.filter((o) => o.ad_plan_id === p.id && o.status !== 'cancelled').length;
+  p.meta.notes = [...(p.meta.notes || []), { code: 'paused_weak_ad', angle: p.meta.ads[1]?.angle, at: now() }];
+  p.meta.recommendation = { type: 'scale', pct: 20 };
+  p.results = { spend: Math.round(spend), messages, clicks: 124, impressions: 15000, ctr: 0.83, orders, cpa: Math.round(spend / Math.max(1, messages * 0.3)), cost_per_message: Math.round(spend / Math.max(1, messages)),
+    best_angle: p.meta.ads[0]?.angle, worst_angle: p.meta.ads[1]?.angle, days: 3 };
+  p.last_review_at = now(); demoSave(); return { ...p };
+}
+export async function scaleAd(planId, pct = 20) {
+  if (live) return (await metaCall({ action: 'scale', plan_id: planId, pct })).plan;
+  const p = demoPlanOwned(planId); if (p.status !== 'running') fail('not_running');
+  const add = Math.round((p.meta.lifetime_budget || 0) * pct / 100);
+  p.meta.lifetime_budget += add; p.meta.recommendation = null; p.meta.notes = [...(p.meta.notes || []), { code: 'scaled', pct, egp: add, at: now() }];
+  demoSave(); return { ...p };
+}
+export async function stopAd(planId) {
+  if (live) return (await metaCall({ action: 'stop', plan_id: planId })).plan;
+  const p = demoPlanOwned(planId); if (p.status !== 'running') fail('not_running');
+  p.status = 'stopped'; p.meta.recommendation = null; p.meta.notes = [...(p.meta.notes || []), { code: 'stopped_by_you', at: now() }]; demoSave(); return { ...p };
+}
+export async function adOrders(planId) {
+  if (live) return db.rpc('ad_plan_orders', { p_plan: planId });
+  const list = demo.orders.filter((o) => o.ad_plan_id === planId);
+  return { orders: list.filter((o) => o.status !== 'cancelled').length, delivered: list.filter((o) => o.status === 'delivered').length, returned: list.filter((o) => o.status === 'returned').length };
+}
+
+// Admin: Facebook connections and running the daily review now.
+export async function adminMetaConnections() {
+  if (live) return db.select('meta_connections', 'select=owner_id,fb_name,pages,ad_accounts,expires_at,connected_at,profiles(full_name)&order=connected_at.desc');
+  return demo.meta_connections.map((c) => ({ ...c, profiles: { full_name: demo.profiles.find((u) => u.id === c.owner_id)?.full_name || '' } }));
+}
+export async function adminReviewAll() {
+  if (live) return metaCall({ action: 'review_all' });
+  return { reviewed: demo.ad_plans.filter((p) => p.status === 'running').length, failed: 0 };
 }

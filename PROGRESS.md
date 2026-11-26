@@ -2,6 +2,35 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.19 — Nov 2026 (AI media buyer: Facebook publishing ready, switched off until Meta day)
+- **Facebook connection** (Services → Media buying → AI ads): "Connect Facebook" opens Facebook's own login (no password
+  to Forsa) → the seller picks the page + ad account (EGP only) for each business → "Disconnect" any time (pauses running
+  ads, removes Forsa's access on Facebook, deletes the token). The access token is stored **encrypted** (key from the
+  Meta app secret, only the `meta-ads` Edge Function has it); nobody can read the token column.
+- **Automatic publishing**: after approval, "Publish my ad now" creates the campaign + audience (governorates, age,
+  gender, interests) + the 3 ads on the seller's page from his ad account; everything is created paused and switched on
+  only at the end; the **total budget is a hard lifetime limit** with the end date; if Facebook refuses anything, the
+  half-made campaign is deleted and the seller sees Facebook's reason. Website ads use a tracked link (?fad=<plan>) so
+  every website order is credited to the ad (orders.ad_plan_id, place_store_order_ad).
+- **Live results + AI decisions**: spent vs limit, messages, orders from the ad, cost per order vs break-even, each ad's
+  status; the AI pauses weak ads (never the last one that ran), stops everything after 3× break-even with no results,
+  recommends +20% budget when cost per order ≤ 70% of break-even (the seller approves), and finishes at the end date.
+  "Update results now", "Stop ad". Results go into the brand memory; finished ads add **suggested lessons** (switched off)
+  for the admin.
+- **Daily AI review**: `supabase/meta_day.sql` schedules it every day 10:00 Cairo (pg_cron + pg_net, secret kept only in
+  the database). Admin → AI ads: Facebook connections, results per plan, "Run the AI review now".
+- Switched on by `META_APP_ID` in `src/config.js` + Supabase secrets `META_APP_ID`, `META_APP_SECRET` (+ optional
+  `META_LOGIN_CONFIG_ID`, `META_GRAPH_VERSION`). Steps: **META_DAY.md**.
+- Database: `supabase/v1_19.sql`. Edge Function: `meta-ads` (Verify JWT OFF). Tested against a fake Facebook (32 checks).
+
+## Version 1.18 — Nov 2026 (strategy options, the seller's touch, brand memory)
+- After the questions the AI proposes **3 strategies** (one "Recommended for you", with reasons from the seller's numbers
+  and history); the seller picks one and his **touch**: tone (friendly / funny / premium / bold), up to 3 ad angles, emojis,
+  price in the first line. The AI writes the 3 ads in that strategy and style.
+- **Brand memory per business**: the seller's own brand notes + what the AI remembers (past plans, strategies, tones,
+  changes he asked for, 👍/👎 notes, real results). The AI reads it before every strategy/plan and says what it used.
+- Every AI step counts as an attempt (max 20 a day; plans + changes still 5). Database: `supabase/v1_18.sql`.
+
 ## Version 1.17 — Nov 2026 (AI media buyer, pilot step 1)
 - Services → Media buying → "Request" now starts the **AI media buyer** (a "Prefer a human specialist?" link keeps the
   partner-agency request). 6 quick questions (product + selling price, goal, governorates, age/gender, offer/notes/ad
