@@ -215,7 +215,7 @@ export function memoryFacts(notes, past) {
       results: r.spend != null ? { spent_egp: r.spend, orders: r.orders, messages: r.messages, cost_per_order_egp: r.cpa, best_angle: r.best_angle, worst_angle: r.worst_angle } : null,
     };
   });
-  return { brand_notes: str(notes, 600) || 'none', past_plans: plans.length ? plans : 'none yet (first plan for this brand)' };
+  return { brand_notes: str(notes, 600) || 'none', past_plans_count: plans.length, past_plans: plans.length ? plans : 'none yet (first plan for this brand)' };
 }
 
 const STRATEGY_SCHEMA = {
@@ -283,7 +283,7 @@ function baseFacts({ product, business, answers, math, link, lessons, memory }) 
 }
 
 const youLine = (lang) => `Write every text for the seller in ${lang === 'ar' ? 'simple Egyptian Arabic' : 'simple English'}, speaking directly to the seller as "you" (never "the seller"), like a friendly expert media buyer.`;
-const memoryLine = '- from_history: one sentence on what you used from brand_memory (their brand notes, past plans, changes they asked for, feedback, results). If it is the first plan, say you will learn from this one. Always follow brand_notes.';
+const memoryLine = '- from_history: one sentence on what you used from brand_memory: how many past plans you saw and what you used from them (strategies and tones they picked, changes they asked for, feedback, real results), plus their brand notes. Past plans that never ran (draft/approved) are their style preferences, not results. Only if past_plans is "none yet" say it is the first plan and you will learn from it. Always follow brand_notes.';
 
 export function buildStrategyPrompt(ctx) {
   return [
