@@ -4,7 +4,7 @@
 import React, { useMemo, useState } from 'react';
 import { useApp, go, Header, Button, Field, Spinner, ErrorBox, Icon, money, num, date, pname, imgSrc, latinDigits, useLoad } from '../core.jsx';
 import { GOVERNORATES } from '../lib/i18n.js';
-import { AD_AGES, AD_DAILY, AD_DAYS, AD_MIN_DAILY, adMath } from '../lib/ads.js';
+import { AD_AGES, AD_DAILY, AD_DAYS, AD_MIN_DAILY, AD_TONES, adMath } from '../lib/ads.js';
 import * as api from '../lib/api.js';
 
 const STATUS_PILL = { draft: 'pill-pending', approved: 'pill-delivered', running: 'pill-confirmed', done: 'pill-delivered', stopped: 'pill-cancelled' };
@@ -14,10 +14,10 @@ const errText = (t, e) => (e?.code === 'limit' ? t('adLimit') : e?.code === 'ai_
 export function AdsPage({ sub, data, notify }) {
   if (sub === 'new') return <AdWizard data={data} notify={notify} />;
   if (sub) return <AdPlanView id={sub} data={data} notify={notify} />;
-  return <AdsHome data={data} />;
+  return <AdsHome data={data} notify={notify} />;
 }
 
-function AdsHome({ data }) {
+function AdsHome({ data, notify }) {
   const { t, lang } = useApp();
   const plans = useLoad(() => api.myAdPlans(), []);
   const quota = useLoad(() => api.adQuota(), []);
@@ -32,6 +32,7 @@ function AdsHome({ data }) {
         <Button block onClick={() => go('/ads/new')}><Icon name="sparkle" size={18} /> {t('aiAdsNew')}</Button>
         {quota.data != null && quota.data < 9999 && <p className="small muted">{t('adLeftToday', { n: num(quota.data, lang) })}</p>}
       </div>
+      {(data.businesses || []).length > 0 && <BrandMemory businesses={data.businesses} notify={notify} />}
       {plans.loading ? <Spinner /> : plans.error ? <ErrorBox error={plans.error} onRetry={plans.reload} /> : (plans.data || []).length > 0 && (
         <>
           <div className="section-head"><h2>{t('myAdPlans')}</h2></div>
@@ -51,7 +52,55 @@ function AdsHome({ data }) {
   );
 }
 
-const STEPS = ['adStepProduct', 'adStepGoal', 'adStepWhere', 'adStepWho', 'adStepOffer', 'adStepBudget'];
+// Brand memory: the seller's own notes for the AI + what the AI remembers from his past plans (per business/brand).
+function BrandMemory({ businesses, notify }) {
+  const { t, lang } = useApp();
+  const [bizId, setBizId] = useState(businesses[0].id);
+  const mem = useLoad(() => api.brandMemory(bizId), [bizId]);
+  const [notes, setNotes] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const value = notes ?? mem.data?.notes ?? '';
+  async function save() {
+    setBusy(true);
+    try { await api.saveBrandNotes(bizId, value); notify(t('memorySaved')); setNotes(null); mem.reload(); } catch (e) { notify(e.message); } finally { setBusy(false); }
+  }
+  const plans = mem.data?.plans || [];
+  return (
+    <>
+      <div className="section-head"><h2>{t('brandMemory')}</h2></div>
+      <div className="card stack brand-memory">
+        <p className="small muted">{t('brandMemoryLead')}</p>
+        {businesses.length > 1 && (
+          <div className="chips opt-chips" role="radiogroup" aria-label={t('business')}>
+            {businesses.map((b) => <button type="button" key={b.id} role="radio" aria-checked={bizId === b.id} className="chip" onClick={() => { setBizId(b.id); setNotes(null); }}>{b.name}</button>)}
+          </div>
+        )}
+        <Field id="bm-notes" label={t('brandNotes')} hint={t('brandNotesHint')}>
+          <textarea id="bm-notes" rows="3" maxLength={600} value={value} onChange={(e) => setNotes(e.target.value)} />
+        </Field>
+        <Button small variant="ghost" disabled={busy || notes == null} onClick={save}>{busy ? t('loading') : t('save')}</Button>
+        <h3 className="small">{t('aiRemembers')}</h3>
+        {mem.loading ? <Spinner /> : plans.length === 0 ? <p className="small muted">{t('aiRemembersNone')}</p> : (
+          <ul className="memory-list small">
+            {plans.map((p) => {
+              const r = p.results || {};
+              return (
+                <li key={p.id}>
+                  <b>{date(p.created_at, lang)} · {p.plan?.product_name}</b> — {p.answers?.strategy?.title || t(`adObj_${p.plan?.objective}`)}{p.answers?.touch ? `, ${t(`tone_${p.answers.touch.tone}`)}` : ''}
+                  {(p.change_notes || []).length > 0 && <span className="muted"> · {t('youAsked')}: “{p.change_notes.slice(-2).join('”, “')}”</span>}
+                  {p.feedback === 1 && <span> · 👍</span>}{p.feedback === -1 && <span> · 👎{p.feedback_note ? ` “${p.feedback_note}”` : ''}</span>}
+                  {r.spend != null && <span> · {t('memResults', { s: money(r.spend, lang), o: num(r.orders || 0, lang) })}</span>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+}
+
+const STEPS = ['adStepProduct', 'adStepGoal', 'adStepWhere', 'adStepWho', 'adStepOffer', 'adStepBudget', 'adStepStrategy'];
 
 function AdWizard({ data }) {
   const { t, lang } = useApp();
@@ -63,7 +112,9 @@ function AdWizard({ data }) {
   const [f, setF] = useState({ bizId: businesses[0]?.id || '', productId: '', price: '', goal: 'auto', governorates: [], ages: ['18-24', '25-34'], gender: 'all',
     offer: '', notes: '', ad_lang: 'ar', daily: 150, days: 5 });
   const [err, setErr] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [opts, setOpts] = useState(null); // the AI's 3 strategies, angles and tone
+  const [choice, setChoice] = useState(null); // { strategy index, tone, angles, emojis, price_first }
   const biz = businesses.find((b) => b.id === f.bizId);
   const mine = useMemo(() => (prods.data || []).filter((p) => biz?.product_ids.includes(p.id)), [prods.data, biz]);
   const product = mine.find((p) => p.id === f.productId);
@@ -82,8 +133,10 @@ function AdWizard({ data }) {
       <div className="screen"><Header title={t('aiAds')} />
         <div className="card ai-building stack" role="status" aria-live="polite">
           <Spinner />
-          <b>{t('adBuilding')}</b>
-          <ul className="small muted own-steps"><li>{t('adBuilding1')}</li><li>{t('adBuilding2')}</li><li>{t('adBuilding3')}</li></ul>
+          <b>{busy === 'strategies' ? t('adThinking') : t('adBuilding')}</b>
+          {busy === 'strategies'
+            ? <ul className="small muted own-steps"><li>{t('adBuilding1')}</li><li>{t('adThinking2')}</li><li>{t('adThinking3')}</li></ul>
+            : <ul className="small muted own-steps"><li>{t('adBuilding2')}</li><li>{t('adBuilding3')}</li></ul>}
         </div>
       </div>
     );
@@ -97,18 +150,33 @@ function AdWizard({ data }) {
     }
     if (step === 3 && f.ages.length === 0) return t('adPickAge');
     if (step === 5 && (Number(f.daily) || 0) < AD_MIN_DAILY) return t('adDailyMin', { n: num(AD_MIN_DAILY, lang) });
+    if (step === 6 && !choice) return t('adPickStrategy');
     return '';
   }
+  const answers = () => ({ price, goal: f.goal, governorates: f.governorates, ages: f.ages, gender: f.gender, offer: f.offer, notes: f.notes, ad_lang: f.ad_lang, daily: Number(f.daily), days: Number(f.days) });
   async function next() {
     const e = check(); if (e) { setErr(e); return; }
-    if (step < STEPS.length - 1) { setStep(step + 1); window.scrollTo(0, 0); return; }
-    setBusy(true);
+    if (step < 5) { setStep(step + 1); window.scrollTo(0, 0); return; }
+    if (step === 5) {
+      setBusy('strategies');
+      try {
+        const o = await api.adStrategies({ businessId: f.bizId, productId: f.productId, answers: answers(), lang });
+        setOpts(o);
+        setChoice({ s: Math.max(0, o.strategies.findIndex((x) => x.recommended)), tone: o.recommended_tone || 'friendly', angles: (o.angles || []).slice(0, 3), emojis: true, price_first: false });
+        setStep(6); window.scrollTo(0, 0);
+      } catch (er) { setErr(errText(t, er)); } finally { setBusy(''); }
+      return;
+    }
+    setBusy('plan');
     try {
-      const plan = await api.createAdPlan({ businessId: f.bizId, productId: f.productId, lang,
-        answers: { price, goal: f.goal, governorates: f.governorates, ages: f.ages, gender: f.gender, offer: f.offer, notes: f.notes, ad_lang: f.ad_lang, daily: Number(f.daily), days: Number(f.days) } });
+      const st = opts.strategies[choice.s];
+      const plan = await api.createAdPlan({ businessId: f.bizId, productId: f.productId, lang, answers: answers(),
+        choice: { strategy: { title: st.title, objective: st.objective, summary: st.summary }, touch: { tone: choice.tone, angles: choice.angles, emojis: choice.emojis, price_first: choice.price_first } } });
       go(`/ads/${plan.id}`);
-    } catch (er) { setBusy(false); setErr(errText(t, er)); }
+    } catch (er) { setBusy(''); setErr(errText(t, er)); }
   }
+  const setC = (patch) => { setChoice((c) => ({ ...c, ...patch })); setErr(''); };
+  const toggleAngle = (a) => setChoice((c) => ({ ...c, angles: c.angles.includes(a) ? c.angles.filter((x) => x !== a) : c.angles.length >= 3 ? c.angles : [...c.angles, a] }));
   const chip = (on, label, onClick, key) => <button type="button" key={key || label} role="checkbox" aria-checked={on} className="chip" onClick={onClick}>{label}</button>;
   const radio = (on, label, onClick, key) => <button type="button" key={key || label} role="radio" aria-checked={on} className="chip" onClick={onClick}>{label}</button>;
 
@@ -215,10 +283,36 @@ function AdWizard({ data }) {
         </div>
       )}
 
+      {step === 6 && opts && choice && (
+        <div className="stack">
+          {opts.from_history && <div className="card memory-line"><Icon name="bulb" /> <span className="small">{opts.from_history}</span></div>}
+          <div className="list" role="radiogroup" aria-label={t('adStepStrategy')}>
+            {opts.strategies.map((st, i) => (
+              <button type="button" key={i} role="radio" aria-checked={choice.s === i} className="card opt-card strat-card" onClick={() => setC({ s: i })}>
+                <span className="row-between"><b>{st.title}</b>{st.recommended && <span className="pill pill-delivered">{t('recommendedForYou')}</span>}</span>
+                <span className="small">{st.summary}</span>
+                <span className="small muted">{st.why_for_you}</span>
+                <span className="small muted">{t('adStrategy')}: {t(`adObj_${st.objective}`)}</span>
+              </button>
+            ))}
+          </div>
+          <h3 className="wiz-sub">{t('yourTouch')}</h3>
+          <h4 className="small">{t('adTone')}</h4>
+          <div className="chips opt-chips" role="radiogroup" aria-label={t('adTone')}>{AD_TONES.map((x) => radio(choice.tone === x, t(`tone_${x}`) + (x === opts.recommended_tone ? ' ★' : ''), () => setC({ tone: x }), x))}</div>
+          <h4 className="small">{t('adAngles')}</h4>
+          <div className="chips wrap opt-chips" role="group" aria-label={t('adAngles')}>{(opts.angles || []).map((a) => chip(choice.angles.includes(a), a, () => toggleAngle(a), a))}</div>
+          <p className="small muted">{t('adAnglesHint')}</p>
+          <h4 className="small">{t('adEmojis')}</h4>
+          <div className="chips opt-chips" role="radiogroup" aria-label={t('adEmojis')}>{[true, false].map((v) => radio(choice.emojis === v, t(v ? 'yes' : 'no'), () => setC({ emojis: v }), String(v)))}</div>
+          <h4 className="small">{t('adPriceFirst')}</h4>
+          <div className="chips opt-chips" role="radiogroup" aria-label={t('adPriceFirst')}>{[true, false].map((v) => radio(choice.price_first === v, t(v ? 'yes' : 'no'), () => setC({ price_first: v }), String(v)))}</div>
+        </div>
+      )}
+
       {err && <p className="form-error" role="alert">{err}</p>}
       <div className="wiz-nav">
         {step > 0 && <Button variant="ghost" onClick={() => { setStep(step - 1); setErr(''); }}>{t('back')}</Button>}
-        <Button onClick={next} disabled={step === 0 && mine.length === 0}>{step === STEPS.length - 1 ? <><Icon name="sparkle" size={18} /> {t('adMake')}</> : t('next')}</Button>
+        <Button onClick={next} disabled={step === 0 && mine.length === 0}>{step === 5 ? <><Icon name="sparkle" size={18} /> {t('adSeeStrategies')}</> : step === STEPS.length - 1 ? <><Icon name="sparkle" size={18} /> {t('adMake')}</> : t('next')}</Button>
       </div>
     </div>
   );
@@ -289,9 +383,12 @@ function AdPlanView({ id, notify }) {
       </div>
       {p.warning && <div className="card warn-card"><Icon name="alert" /> <span>{p.warning}</span></div>}
 
+      {p.from_history && <div className="card memory-line"><Icon name="bulb" /> <span className="small"><b>{t('fromMemory')}:</b> {p.from_history}</span></div>}
       <div className="card stack">
-        <h3>{t('adStrategy')}: {t(`adObj_${p.objective}`)}</h3>
+        <h3>{t('adStrategy')}: {p.strategy?.title || t(`adObj_${p.objective}`)}</h3>
+        {p.strategy?.title && <p className="small muted">{t(`adObj_${p.objective}`)}</p>}
         <p>{p.why}</p>
+        {p.touch && <p className="small">{t('yourTouch')}: {t(`tone_${p.touch.tone}`)}{(p.touch.angles || []).length ? ` · ${p.touch.angles.join('، ')}` : ''} · {p.touch.emojis ? t('withEmojis') : t('noEmojis')}{p.touch.price_first ? ` · ${t('priceFirst')}` : ''}</p>}
         {p.product_insight && <p className="small muted">{p.product_insight}</p>}
         <dl className="kv">
           <dt>{t('adWhere')}</dt><dd>{where}</dd>

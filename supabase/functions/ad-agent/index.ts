@@ -1,8 +1,9 @@
 // @ts-nocheck
 // Forsa AI media buyer — Supabase Edge Function "ad-agent" (pilot).
 // The app calls it with the seller's login token (row-level security applies, no service key).
-//   { action: 'create', business_id, product_id, answers, lang }  -> builds a new ad plan
-//   { action: 'revise', plan_id, note, lang }                      -> changes a draft plan as the seller asks
+//   { action: 'strategies', business_id, product_id, answers, lang } -> 3 strategy options + angles + tone (not saved)
+//   { action: 'create', ..., choice: { strategy, touch } }          -> builds the plan with the chosen strategy and touch
+//   { action: 'revise', plan_id, note, lang }                      -> changes a draft plan as the seller asks (kept as memory)
 // It checks the daily limit (ad_try), computes the money math itself (never trusted to the AI), looks at the product
 // photo, reads the Forsa team's lessons (ad_lessons) and the playbook below, asks Google Gemini for a JSON plan and
 // saves it in ad_plans. The seller approves the plan in the app.
@@ -118,7 +119,20 @@ For each ad, with data since start:
   Note: Meta's Ad Library API does not return normal commercial ads in Egypt, so outside winners are collected by the
   Forsa team, not by the AI automatically.
 
-## 9. How you talk to the seller
+## 9. Strategy options and the seller's touch
+- Before writing ads you offer 3 genuinely different strategies and mark ONE as recommended (the best for real profit,
+  with a one-line reason using the seller's numbers and history). The seller picks, so it feels like their own brand.
+- The seller then chooses their touch: tone (friendly / funny / premium / bold), which angles to use, emojis or not,
+  price in the first line or not. Follow these choices exactly; keep your professional rules (section 1) above them.
+
+## 10. Brand memory (each client has their own AI)
+- You receive brand_memory: the seller's own brand notes (always follow them), their past plans for this business
+  (strategy, tone, angles, the changes they asked for, their 👍/👎 notes) and, when ads have run, the real results.
+- Continue what worked for THIS brand (lowest cost per order, liked styles), avoid what failed or what they disliked,
+  and say in one sentence what you used from their history. Their history beats general lessons; general lessons beat
+  guesses.
+
+## 11. How you talk to the seller
 - Short, friendly, encouraging, Egyptian Arabic in Arabic mode. One recommendation at a time, with the reason.
 - Be honest: if the product or price is weak for ads, say so and suggest a better move.
 - Never promise a number of sales.
@@ -130,6 +144,9 @@ export const GOVS = ['Cairo', 'Giza', 'Alexandria', 'Qalyubia', 'Sharqia', 'Daka
   'Red Sea', 'Matrouh', 'New Valley', 'North Sinai', 'South Sinai'];
 const GOALS = ['auto', 'website', 'messages'];
 const AGES = ['18-24', '25-34', '35-44', '45+'];
+export const OBJECTIVES = ['website_sales', 'messages', 'engagement_then_sales'];
+export const TONES = ['friendly', 'funny', 'premium', 'bold'];
+const uuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || ''));
 
 // Seller answers -> safe, limited values.
 export function cleanAnswers(a = {}, hasWebsite = false) {
@@ -152,6 +169,22 @@ export function cleanAnswers(a = {}, hasWebsite = false) {
   };
 }
 
+// The strategy the seller picked + his "touch" (tone, angles, emojis, price first).
+export function cleanChoice(c = {}, hasWebsite = false) {
+  const s = c.strategy || {};
+  let objective = OBJECTIVES.includes(s.objective) ? s.objective : null;
+  if (objective === 'website_sales' && !hasWebsite) objective = 'messages';
+  const strategy = objective ? { title: str(s.title, 60), objective, summary: str(s.summary, 300) } : null;
+  const t = c.touch || {};
+  const touch = {
+    tone: TONES.includes(t.tone) ? t.tone : 'friendly',
+    angles: (Array.isArray(t.angles) ? t.angles : []).map((x) => str(x, 60)).filter(Boolean).slice(0, 3),
+    emojis: t.emojis !== false,
+    price_first: t.price_first === true,
+  };
+  return { strategy, touch };
+}
+
 // The money math is computed here, never by the AI.
 export function moneyMath(product, price) {
   const wholesale = Number(product.wholesale_price) || 0;
@@ -170,12 +203,49 @@ export const AGE_RANGE = (ages) => {
   return { age_min: Math.max(18, lo), age_max: hi };
 };
 
+// Brand memory: the seller's own notes + a short summary of past plans for this business.
+export function memoryFacts(notes, past) {
+  const plans = (past || []).slice(0, 8).map((p) => {
+    const r = p.results || {};
+    return {
+      when: String(p.created_at || '').slice(0, 10), product: p.plan?.product_name, status: p.status,
+      strategy: p.answers?.strategy?.title || p.plan?.objective, objective: p.plan?.objective, tone: p.answers?.touch?.tone,
+      angles: (p.plan?.ads || []).map((a) => a.angle), changes_asked: p.change_notes || [],
+      feedback: p.feedback === 1 ? 'liked' : p.feedback === -1 ? `disliked${p.feedback_note ? `: ${p.feedback_note}` : ''}` : null,
+      results: r.spend != null ? { spent_egp: r.spend, orders: r.orders, messages: r.messages, cost_per_order_egp: r.cpa, best_angle: r.best_angle, worst_angle: r.worst_angle } : null,
+    };
+  });
+  return { brand_notes: str(notes, 600) || 'none', past_plans: plans.length ? plans : 'none yet (first plan for this brand)' };
+}
+
+const STRATEGY_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    strategies: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          title: { type: 'STRING' }, objective: { type: 'STRING', enum: OBJECTIVES }, summary: { type: 'STRING' },
+          why_for_you: { type: 'STRING' }, recommended: { type: 'BOOLEAN' },
+        },
+        required: ['title', 'objective', 'summary', 'why_for_you', 'recommended'],
+      },
+    },
+    angles: { type: 'ARRAY', items: { type: 'STRING' } },
+    recommended_tone: { type: 'STRING', enum: TONES },
+    from_history: { type: 'STRING' },
+  },
+  required: ['strategies', 'angles', 'recommended_tone', 'from_history'],
+};
+
 const PLAN_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    objective: { type: 'STRING', enum: ['website_sales', 'messages', 'engagement_then_sales'] },
+    objective: { type: 'STRING', enum: OBJECTIVES },
     why: { type: 'STRING' },
     product_insight: { type: 'STRING' },
+    from_history: { type: 'STRING' },
     interests: { type: 'ARRAY', items: { type: 'STRING' } },
     ads: {
       type: 'ARRAY',
@@ -192,11 +262,11 @@ const PLAN_SCHEMA = {
     tips: { type: 'ARRAY', items: { type: 'STRING' } },
     warning: { type: 'STRING' },
   },
-  required: ['objective', 'why', 'product_insight', 'interests', 'ads', 'budget_advice', 'tips', 'warning'],
+  required: ['objective', 'why', 'product_insight', 'from_history', 'interests', 'ads', 'budget_advice', 'tips', 'warning'],
 };
 
-export function buildPrompt({ product, business, answers, math, link, lessons, lang, previous, note }) {
-  const facts = {
+function baseFacts({ product, business, answers, math, link, lessons, memory }) {
+  return {
     business_name: business.name,
     product: { name: product.name_ar && answers.ad_lang === 'ar' ? product.name_ar : product.name_en, name_en: product.name_en,
       category: product.category, description: str(product.description_en || product.description_ar, 600), type: product.seller_made ? 'seller own product (stocked at Forsa)' : product.owner_id ? 'seller own brand (made with a Forsa manufacturer)' : 'Forsa ready product (dropshipping)' },
@@ -205,35 +275,67 @@ export function buildPrompt({ product, business, answers, math, link, lessons, l
     seller_choices: { goal: answers.goal, where: answers.all_egypt ? 'All Egypt' : answers.governorates, ages: answers.ages, gender: answers.gender,
       offer: answers.offer || 'none (do not invent one)', extra_notes: answers.notes || '', budget_per_day_egp: answers.daily, days: answers.days,
       total_budget_egp: answers.daily * answers.days, ad_language: answers.ad_lang === 'ar' ? 'Egyptian Arabic' : 'English' },
-    order_channels: { forsa_website_link: link || 'none (the seller has no published Forsa website yet, so website_sales is not possible)', messages: 'WhatsApp or Messenger on the seller page' },
+    order_channels: { forsa_website_link: link || 'none (no published Forsa website yet, so website_sales is not possible)', messages: 'WhatsApp or Messenger on the seller page' },
     delivery: 'Cash on delivery all over Egypt; the customer pays the shipping fee (never free delivery). Delivery usually 2-5 days.',
     forsa_team_lessons: lessons.length ? lessons.map((l) => `[${l.category}${l.evidence ? `, ${l.evidence} ads` : ''}] ${l.lesson}`) : ['none yet'],
+    brand_memory: memory,
   };
+}
+
+const youLine = (lang) => `Write every text for the seller in ${lang === 'ar' ? 'simple Egyptian Arabic' : 'simple English'}, speaking directly to the seller as "you" (never "the seller"), like a friendly expert media buyer.`;
+const memoryLine = '- from_history: one sentence on what you used from brand_memory (their brand notes, past plans, changes they asked for, feedback, results). If it is the first plan, say you will learn from this one. Always follow brand_notes.';
+
+export function buildStrategyPrompt(ctx) {
+  return [
+    `FACTS (JSON): ${JSON.stringify(baseFacts(ctx))}`,
+    '',
+    'Task: propose exactly 3 genuinely different ad strategies for this product, so the seller can choose and feel it is their own brand.',
+    'Return JSON only:',
+    '- strategies: 3 items. title (2-5 words), objective (website_sales only if a Forsa website link exists; messages; engagement_then_sales), summary (one sentence: what we will do), why_for_you (one sentence: why it fits this seller now, use the numbers and brand_memory), recommended: true for exactly ONE (the best for real profit), false for the others. If the seller chose a goal other than "auto", at least two strategies must use it.',
+    '- angles: 6 short different ad angle names (2-4 words each) that could sell this product (e.g. "Gift for her", "Price value", "Student life").',
+    '- recommended_tone: the best tone for this brand: friendly, funny, premium or bold.',
+    memoryLine,
+    youLine(ctx.lang),
+  ].join('\n');
+}
+
+export function buildPrompt(ctx) {
+  const { answers, choice, previous, note, lang } = ctx;
+  const touch = choice?.touch || { tone: 'friendly', angles: [], emojis: true, price_first: false };
+  const chosen = choice?.strategy
+    ? `The seller chose this strategy (follow it): ${JSON.stringify(choice.strategy)}.`
+    : 'No strategy chosen: pick the best one with the playbook.';
+  const style = `The seller's touch (follow it): tone = ${touch.tone}; ${touch.angles.length ? `use these angles for the 3 ads: ${touch.angles.join(' / ')} (fill the rest yourself)` : 'choose the 3 angles yourself'}; ${touch.emojis ? 'a few emojis are fine (max 3 per ad)' : 'NO emojis at all'}; ${touch.price_first ? 'put the price in the first line (the hook)' : 'price after the benefits'}.`;
   const task = previous
     ? `The seller wants changes to this draft plan. Seller's request: "${str(note, 300)}". Keep what they did not ask to change, follow the playbook, and return the full updated plan.\nCurrent plan: ${JSON.stringify(previous)}`
     : 'Build the ad plan now.';
   return [
-    `FACTS (JSON): ${JSON.stringify(facts)}`,
+    `FACTS (JSON): ${JSON.stringify(baseFacts(ctx))}`,
     '',
+    chosen,
+    style,
     task,
     '',
     'Return JSON only:',
-    '- objective: website_sales (only if a Forsa website link exists), messages, or engagement_then_sales. If the seller chose a goal, respect it unless impossible; if "auto", choose with the playbook.',
-    '- why: one or two simple sentences for the seller explaining the strategy.',
+    '- objective: website_sales (only if a Forsa website link exists), messages, or engagement_then_sales — the chosen strategy\'s objective when there is one.',
+    '- why: one or two simple sentences explaining the strategy.',
     '- product_insight: one sentence on who buys this product and why, based on the photo and facts.',
+    memoryLine,
     '- interests: 0 to 3 Meta interest suggestions in English (only if the product is niche), else [].',
     '- ads: exactly 3 ads with 3 genuinely different angles. hook = the first line of primary_text. primary_text 40-90 words, includes the price, "cash on delivery" and delivery time, no free delivery, no invented offers/reviews/stock. headline under 40 characters. Language: ' + (answers.ad_lang === 'ar' ? 'Egyptian Arabic (masri).' : 'simple English.'),
     '- budget_advice: one or two sentences: is this budget/days enough to judge (compare total budget with 3x break-even cost per order)? What to do if not.',
-    '- tips: 2 to 4 short practical tips for this seller (reply speed for messages, confirming orders, etc.).',
+    '- tips: 2 to 4 short practical tips (reply speed for messages, confirming orders, etc.).',
     '- warning: an honest warning if the price/profit is weak for ads (break-even cost per order under 40 EGP) or the budget is too small, else an empty string.',
-    `- Write why, product_insight, budget_advice, tips and warning in ${lang === 'ar' ? 'simple Egyptian Arabic' : 'simple English'}, speaking directly to the seller as "you" (never "the seller"), like a friendly expert media buyer.`,
+    youLine(lang),
   ].join('\n');
 }
 
+const FREE = /(free\s+(delivery|shipping))|(توصيل|شحن)\s*(مجاني|مجانى|ببلاش|فري)|(الشحن|التوصيل)\s*علينا/i;
+
 // Keep only allowed fields and lengths from the AI answer.
-export function cleanPlan(p, hasWebsite) {
+export function cleanPlan(p, hasWebsite, forcedObjective) {
   if (!p || typeof p !== 'object' || !Array.isArray(p.ads) || p.ads.length < 1) return null;
-  let objective = ['website_sales', 'messages', 'engagement_then_sales'].includes(p.objective) ? p.objective : 'messages';
+  let objective = OBJECTIVES.includes(forcedObjective) ? forcedObjective : OBJECTIVES.includes(p.objective) ? p.objective : 'messages';
   if (objective === 'website_sales' && !hasWebsite) objective = 'messages';
   const ads = p.ads.slice(0, 3).map((a) => ({
     angle: str(a.angle, 60), hook: str(a.hook, 160), primary_text: String(a.primary_text || '').trim().slice(0, 900),
@@ -241,15 +343,30 @@ export function cleanPlan(p, hasWebsite) {
   })).filter((a) => a.primary_text);
   if (!ads.length) return null;
   // Never free delivery (Forsa rule), even if the model slips.
-  const free = /(free\s+(delivery|shipping))|(توصيل|شحن)\s*(مجاني|مجانى|ببلاش|فري)|(الشحن|التوصيل)\s*علينا/i;
-  if (ads.some((a) => free.test(a.primary_text) || free.test(a.headline))) return null;
+  if (ads.some((a) => FREE.test(a.primary_text) || FREE.test(a.headline))) return null;
   return {
-    objective, why: str(p.why, 400), product_insight: str(p.product_insight, 300),
+    objective, why: str(p.why, 400), product_insight: str(p.product_insight, 300), from_history: str(p.from_history, 300),
     interests: (Array.isArray(p.interests) ? p.interests : []).map((x) => str(x, 40)).filter(Boolean).slice(0, 3),
     ads, budget_advice: str(p.budget_advice, 400),
     tips: (Array.isArray(p.tips) ? p.tips : []).map((x) => str(x, 200)).filter(Boolean).slice(0, 4),
     warning: str(p.warning, 300),
   };
+}
+
+export function cleanStrategies(s, hasWebsite) {
+  if (!s || !Array.isArray(s.strategies)) return null;
+  let list = s.strategies.slice(0, 3).map((x) => {
+    let objective = OBJECTIVES.includes(x.objective) ? x.objective : 'messages';
+    if (objective === 'website_sales' && !hasWebsite) objective = 'messages';
+    return { title: str(x.title, 60), objective, summary: str(x.summary, 300), why_for_you: str(x.why_for_you, 300), recommended: x.recommended === true };
+  }).filter((x) => x.title && x.summary);
+  if (!list.length) return null;
+  const pick = Math.max(0, list.findIndex((x) => x.recommended)); // exactly one: the AI's first pick, else the first
+  list = list.map((x, i) => ({ ...x, recommended: i === pick }));
+  list.sort((a, b) => Number(b.recommended) - Number(a.recommended));
+  if (list.some((x) => FREE.test(`${x.title} ${x.summary} ${x.why_for_you}`))) return null;
+  const angles = (Array.isArray(s.angles) ? s.angles : []).map((x) => str(x, 40)).filter(Boolean).slice(0, 6);
+  return { strategies: list, angles, recommended_tone: TONES.includes(s.recommended_tone) ? s.recommended_tone : 'friendly', from_history: str(s.from_history, 300) };
 }
 
 export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, appUrl = DEFAULT_APP_URL, fetchFn = fetch }) {
@@ -281,7 +398,7 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, app
     } catch (_) { return null; }
   }
 
-  async function gemini(m, system, parts) {
+  async function gemini(m, system, parts, schema) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
@@ -289,7 +406,7 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, app
         method: 'POST', signal: ctrl.signal,
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
         body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }],
-          generationConfig: { temperature: 0.8, maxOutputTokens: 4096, responseMimeType: 'application/json', responseSchema: PLAN_SCHEMA } }),
+          generationConfig: { temperature: 0.8, maxOutputTokens: 4096, responseMimeType: 'application/json', responseSchema: schema } }),
       });
       if (!res.ok) { console.error(`gemini ${m} ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`); return null; }
       const data = await res.json();
@@ -297,6 +414,12 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, app
       try { return JSON.parse(text); } catch (_) { console.error(`gemini ${m} bad json`); return null; }
     } catch (e) { console.error(`gemini ${m} failed: ${e?.name || 'error'}`); return null; }
     finally { clearTimeout(timer); }
+  }
+
+  // Ask the main model, then the fallback model, until the cleaned answer is valid.
+  async function ask(parts, schema, clean) {
+    for (const m of [model, FALLBACK_MODEL]) { const out = clean(await gemini(m, PLAYBOOK, parts, schema)); if (out) return out; }
+    return null;
   }
 
   return async function handle(req) {
@@ -311,20 +434,21 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, app
       if (!user?.id) return json(401, { code: 'auth' });
       let body = {}; try { body = await req.json(); } catch (_) { return json(400, { code: 'bad_request' }); }
       const lang = body.lang === 'ar' ? 'ar' : 'en';
-      const action = body.action === 'revise' ? 'revise' : 'create';
+      const action = ['revise', 'strategies'].includes(body.action) ? body.action : 'create';
       if (!geminiKey) return json(503, { code: 'ai_unavailable' });
 
       let previous = null; let planRow = null; let businessId = body.business_id; let productId = body.product_id; let rawAnswers = body.answers;
       if (action === 'revise') {
         if (!str(body.note, 300)) return json(400, { code: 'bad_request' });
-        const rows = await rest(token, `ad_plans?id=eq.${encodeURIComponent(body.plan_id)}&owner_id=eq.${user.id}&select=*`);
+        if (!uuid(body.plan_id)) return json(400, { code: 'bad_request' });
+        const rows = await rest(token, `ad_plans?id=eq.${body.plan_id}&owner_id=eq.${user.id}&select=*`);
         planRow = rows?.[0];
         if (!planRow) return json(404, { code: 'not_found' });
         if (planRow.status !== 'draft') return json(409, { code: 'not_draft' });
         businessId = planRow.business_id; productId = planRow.product_id; rawAnswers = planRow.answers;
         const { math: _m, ...rest0 } = planRow.plan || {}; previous = rest0;
       }
-      if (!/^[0-9a-f-]{36}$/i.test(String(businessId)) || !/^[0-9a-f-]{36}$/i.test(String(productId))) return json(400, { code: 'bad_request' });
+      if (!uuid(businessId) || !uuid(productId)) return json(400, { code: 'bad_request' });
       const [biz] = await rest(token, `businesses?id=eq.${businessId}&owner_id=eq.${user.id}&select=id,name`);
       if (!biz) return json(404, { code: 'not_found' });
       const [link] = await rest(token, `business_products?business_id=eq.${businessId}&product_id=eq.${productId}&select=product_id`);
@@ -337,26 +461,46 @@ export function createHandler({ url, anon, geminiKey, model = DEFAULT_MODEL, app
       if (!answers.price) answers.price = Number(product.suggested_price) || 0;
       if (answers.price < (Number(product.min_price) || 0)) return json(400, { code: 'price_below_min', min: Number(product.min_price) });
       const math = moneyMath(product, answers.price);
+      const choice = action === 'revise' ? cleanChoice({ strategy: rawAnswers?.strategy, touch: rawAnswers?.touch }, !!site) : cleanChoice(body.choice || {}, !!site);
 
-      try { await rest(token, 'rpc/ad_try', { method: 'POST', body: {} }); } catch (_) { return json(429, { code: 'limit' }); }
+      // Every AI step counts (max 20 a day); new plans and changes also use one of the 5 daily plans.
+      try {
+        await rest(token, 'rpc/ad_try_step', { method: 'POST', body: {} });
+        if (action !== 'strategies') await rest(token, 'rpc/ad_try', { method: 'POST', body: {} });
+      } catch (_) { return json(429, { code: 'limit' }); }
 
-      const lessons = await rest(token, `ad_lessons?active=eq.true&or=(category.eq.All,category.eq.${encodeURIComponent(product.category || 'Other')})&select=category,lesson,evidence&order=evidence.desc&limit=12`).catch(() => []);
+      const cat = encodeURIComponent(product.category || 'Other');
+      const [lessons, notesRow, past] = await Promise.all([
+        rest(token, `ad_lessons?active=eq.true&or=(category.eq.All,category.eq.${cat})&select=category,lesson,evidence&order=evidence.desc&limit=12`).catch(() => []),
+        rest(token, `brand_memory?business_id=eq.${businessId}&select=notes`).catch(() => []),
+        rest(token, `ad_plans?business_id=eq.${businessId}&owner_id=eq.${user.id}${planRow ? `&id=neq.${planRow.id}` : ''}&select=created_at,status,answers,plan,change_notes,feedback,feedback_note,results&order=created_at.desc&limit=8`).catch(() => []),
+      ]);
+      const memory = memoryFacts(notesRow?.[0]?.notes, past);
       const img = await photo(product.image_url);
-      const prompt = buildPrompt({ product, business: biz, answers, math, link: site, lessons: lessons || [], lang, previous, note: body.note });
-      const parts = img ? [img, { text: prompt }] : [{ text: prompt }];
-      let raw = await gemini(model, PLAYBOOK, parts);
-      let plan = cleanPlan(raw, !!site);
-      if (!plan) { raw = await gemini(FALLBACK_MODEL, PLAYBOOK, parts); plan = cleanPlan(raw, !!site); }
+      const ctx = { product, business: biz, answers, math, link: site, lessons: lessons || [], memory, lang, previous, note: body.note, choice };
+
+      if (action === 'strategies') {
+        const prompt = buildStrategyPrompt(ctx);
+        const out = await ask(img ? [img, { text: prompt }] : [{ text: prompt }], STRATEGY_SCHEMA, (r) => cleanStrategies(r, !!site));
+        if (!out) return json(503, { code: 'ai_unavailable' });
+        return json(200, { ...out, math, answers });
+      }
+
+      const prompt = buildPrompt(ctx);
+      const plan = await ask(img ? [img, { text: prompt }] : [{ text: prompt }], PLAN_SCHEMA, (r) => cleanPlan(r, !!site, choice.strategy?.objective));
       if (!plan) return json(503, { code: 'ai_unavailable' });
       const { age_min, age_max } = AGE_RANGE(answers.ages);
       const full = { ...plan, math, link: site, audience: { all_egypt: answers.all_egypt, governorates: answers.governorates, age_min, age_max, gender: answers.gender, interests: plan.interests },
-        budget: { daily: answers.daily, days: answers.days, total: answers.daily * answers.days }, image_url: product.image_url, product_name: product.name_en, business_name: biz.name, used_photo: !!img };
+        budget: { daily: answers.daily, days: answers.days, total: answers.daily * answers.days }, image_url: product.image_url, product_name: product.name_en, business_name: biz.name, used_photo: !!img,
+        strategy: choice.strategy, touch: choice.touch };
 
       let saved;
       if (action === 'revise') {
-        [saved] = await rest(token, `ad_plans?id=eq.${planRow.id}`, { method: 'PATCH', prefer: 'return=representation', body: { plan: full, revisions: (planRow.revisions || 0) + 1 } });
+        [saved] = await rest(token, `ad_plans?id=eq.${planRow.id}`, { method: 'PATCH', prefer: 'return=representation',
+          body: { plan: full, revisions: (planRow.revisions || 0) + 1, change_notes: [...(planRow.change_notes || []), str(body.note, 300)].slice(-30) } });
       } else {
-        [saved] = await rest(token, 'ad_plans', { method: 'POST', prefer: 'return=representation', body: { owner_id: user.id, business_id: businessId, product_id: productId, answers, plan: full } });
+        [saved] = await rest(token, 'ad_plans', { method: 'POST', prefer: 'return=representation',
+          body: { owner_id: user.id, business_id: businessId, product_id: productId, answers: { ...answers, strategy: choice.strategy, touch: choice.touch }, plan: full } });
       }
       return json(200, { plan: saved });
     } catch (e) {

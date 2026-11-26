@@ -5,6 +5,7 @@ export const AD_DAILY = [100, 150, 250, 500];
 export const AD_DAYS = [3, 5, 7, 14];
 export const AD_DAILY_LIMIT = 5;
 export const AD_MIN_DAILY = 50;
+export const AD_TONES = ['friendly', 'funny', 'premium', 'bold'];
 const REFUSAL = 0.75; // 20-30% of cash-on-delivery orders are refused in Egypt
 
 export function adMath(product, price) {
@@ -25,10 +26,25 @@ export function ageRange(ages) {
 }
 
 // Demo mode only: a simple local plan so the screens can be tested without Gemini.
-export function demoAdPlan({ product, business, answers, link, lang, note }) {
+// Demo mode only: 3 strategy options like the AI's.
+export function demoStrategies({ answers, link, lang, memoryUsed }) {
+  const t = (en, a) => (lang === 'ar' ? a : en);
+  const list = [
+    { title: t('Trust through messages', 'ثقة عن طريق الرسايل'), objective: 'messages', summary: t('People message you, you answer and confirm the order.', 'الناس تكلّمك، ترد وتأكد الأوردر.'), why_for_you: t('Cash-on-delivery buyers trust a quick reply.', 'اللي بيدفع عند الاستلام بيثق في الرد السريع.'), recommended: true },
+    { title: t('Gift push', 'دفعة الهدايا'), objective: 'messages', summary: t('Sell it as a gift for someone they love.', 'نبيعه كهدية لحد بيحبوه.'), why_for_you: t('Gifts sell well all year in Egypt.', 'الهدايا بتتباع طول السنة في مصر.'), recommended: false },
+    link ? { title: t('Fast website orders', 'أوردرات سريعة من الموقع'), objective: 'website_sales', summary: t('Send buyers straight to your Forsa website.', 'نودّي المشتري لموقعك على فرصة على طول.'), why_for_you: t('Every order is counted automatically.', 'كل أوردر بيتحسب لوحده.'), recommended: false }
+      : { title: t('Warm up, then sell', 'تسخين وبعدين بيع'), objective: 'engagement_then_sales', summary: t('2 days of engagement, then sales.', 'يومين تفاعل وبعدين بيع.'), why_for_you: t('Good for a new page with few followers.', 'مناسب لصفحة جديدة متابعينها قليلين.'), recommended: false },
+  ];
+  if (answers.goal === 'website' && link) { list[0].recommended = false; list[2].recommended = true; list.unshift(list.splice(2, 1)[0]); }
+  return { strategies: list, angles: lang === 'ar' ? ['هدية', 'قيمة مقابل السعر', 'حياة الطلبة', 'مشكلة وحل', 'استخدام يومي', 'جودة'] : ['Gift', 'Price value', 'Student life', 'Problem → solution', 'Daily use', 'Quality'],
+    recommended_tone: 'friendly', from_history: memoryUsed ? t('I used your brand notes and your last plans.', 'استخدمت ملاحظات البراند بتاعك وخططك اللي فاتت.') : t('This is your first plan; I will learn from it.', 'دي أول خطة ليك، وهتعلم منها.') };
+}
+
+export function demoAdPlan({ product, business, answers, link, lang, note, choice, memoryUsed }) {
   const m = adMath(product, answers.price);
   const name = (answers.ad_lang === 'ar' ? product.name_ar : product.name_en) || product.name_en;
-  const objective = answers.goal === 'website' && link ? 'website_sales' : answers.goal === 'messages' || !link ? 'messages' : 'website_sales';
+  let objective = answers.goal === 'website' && link ? 'website_sales' : answers.goal === 'messages' || !link ? 'messages' : 'website_sales';
+  if (choice?.strategy?.objective) objective = choice.strategy.objective === 'website_sales' && !link ? 'messages' : choice.strategy.objective;
   const ar = answers.ad_lang === 'ar';
   const end = ar ? `بـ ${answers.price} جنيه بس.\nالدفع عند الاستلام، والتوصيل من 2 لـ 5 أيام.` : `Only EGP ${answers.price}.\nCash on delivery, delivered in 2-5 days.`;
   const ads = (ar
@@ -46,6 +62,7 @@ export function demoAdPlan({ product, business, answers, link, lang, note }) {
     warning: m.weak ? t('Your profit per piece is small for ads. Try a higher price or a bundle.', 'ربحك في القطعة قليل على الإعلانات. جرّب سعر أعلى أو عرض قطعتين.') : '',
     math: m, link: link || '', audience: { all_egypt: answers.all_egypt, governorates: answers.governorates, age_min, age_max, gender: answers.gender, interests: [] },
     budget: { daily: answers.daily, days: answers.days, total: answers.daily * answers.days }, image_url: product.image_url, product_name: product.name_en,
-    business_name: business.name, used_photo: true,
+    business_name: business.name, used_photo: true, strategy: choice?.strategy || null, touch: choice?.touch || null,
+    from_history: memoryUsed ? t('I used your brand notes and your last plans.', 'استخدمت ملاحظات البراند بتاعك وخططك اللي فاتت.') : t('This is your first plan; I will learn from it.', 'دي أول خطة ليك، وهتعلم منها.'),
   };
 }

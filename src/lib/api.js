@@ -3,7 +3,7 @@ import { isConfigured, db, storage, auth, getSession, invokeFunction } from './s
 import { DEMO_PRODUCTS, DEMO_MANUFACTURERS } from './demo.js';
 import { PLAN, SUPABASE_URL } from '../config.js';
 import { GOVERNORATES } from './i18n.js';
-import { demoAdPlan, AD_DAILY_LIMIT, AD_AGES, AD_GOALS } from './ads.js';
+import { demoAdPlan, demoStrategies, AD_DAILY_LIMIT, AD_AGES, AD_GOALS, AD_TONES } from './ads.js';
 
 const live = isConfigured();
 
@@ -22,7 +22,7 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
-  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites', 'store_connections', 'external_orders', 'ad_plans', 'ad_lessons'].forEach((k) => { if (!d[k]) d[k] = []; });
+  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites', 'store_connections', 'external_orders', 'ad_plans', 'ad_lessons', 'brand_memory'].forEach((k) => { if (!d[k]) d[k] = []; });
   d.orders.forEach((o) => { if (o.status === 'on_hold') o.status = 'pending'; }); // old demo data
   if (!d.settings) d.settings = { website_min_orders: 20 };
   if (!d.shipping_rates) d.shipping_rates = GOVERNORATES.map(([g]) => ({ governorate: g, fee: 70, active: true }));
@@ -1019,16 +1019,38 @@ function demoAdContext(businessId, productId) {
   return { business, product, link: site ? storeLink(site.slug) : '' };
 }
 
-export async function createAdPlan({ businessId, productId, answers, lang = 'en' }) {
-  if (live) return (await invokeFunction('ad-agent', { action: 'create', business_id: businessId, product_id: productId, answers, lang }, 60000)).plan;
+function demoChoice(c, hasSite) {
+  const s = c?.strategy; const t = c?.touch || {};
+  let objective = s && ['website_sales', 'messages', 'engagement_then_sales'].includes(s.objective) ? s.objective : null;
+  if (objective === 'website_sales' && !hasSite) objective = 'messages';
+  return { strategy: objective ? { title: String(s.title || '').slice(0, 60), objective, summary: String(s.summary || '').slice(0, 300) } : null,
+    touch: { tone: AD_TONES.includes(t.tone) ? t.tone : 'friendly', angles: (t.angles || []).slice(0, 3), emojis: t.emojis !== false, price_first: t.price_first === true } };
+}
+const demoHasMemory = (businessId) => demo.ad_plans.some((p) => p.business_id === businessId) || !!demo.brand_memory.find((m) => m.business_id === businessId)?.notes;
+
+// Step before the plan: the AI proposes 3 strategies (one recommended), ad angles and a tone. Nothing is saved.
+export async function adStrategies({ businessId, productId, answers, lang = 'en' }) {
+  if (live) return invokeFunction('ad-agent', { action: 'strategies', business_id: businessId, product_id: productId, answers, lang }, 60000);
+  await new Promise((r) => setTimeout(r, 300));
+  const { product, link } = demoAdContext(businessId, productId);
+  const a = demoAnswers(answers, !!link);
+  if (!a.price) a.price = Number(product.suggested_price) || 0;
+  if (a.price < (Number(product.min_price) || 0)) { const e = new Error('price_below_min'); e.code = 'price_below_min'; e.min = Number(product.min_price); throw e; }
+  return demoStrategies({ answers: a, link, lang, memoryUsed: demoHasMemory(businessId) });
+}
+
+export async function createAdPlan({ businessId, productId, answers, choice = null, lang = 'en' }) {
+  if (live) return (await invokeFunction('ad-agent', { action: 'create', business_id: businessId, product_id: productId, answers, choice, lang }, 60000)).plan;
   await new Promise((r) => setTimeout(r, 400));
   const { business, product, link } = demoAdContext(businessId, productId);
   const a = demoAnswers(answers, !!link);
   if (!a.price) a.price = Number(product.suggested_price) || 0;
   if (a.price < (Number(product.min_price) || 0)) { const e = new Error('price_below_min'); e.code = 'price_below_min'; e.min = Number(product.min_price); throw e; }
   demoAdTry();
-  const row = { id: uid(), owner_id: meId(), business_id: businessId, product_id: productId, status: 'draft', answers: a, plan: demoAdPlan({ product, business, answers: a, link, lang }),
-    revisions: 0, feedback: null, feedback_note: null, results: {}, approved_at: null, created_at: now(), updated_at: now() };
+  const ch = demoChoice(choice, !!link);
+  const memoryUsed = demoHasMemory(businessId);
+  const row = { id: uid(), owner_id: meId(), business_id: businessId, product_id: productId, status: 'draft', answers: { ...a, ...ch }, plan: demoAdPlan({ product, business, answers: a, link, lang, choice: ch, memoryUsed }),
+    change_notes: [], revisions: 0, feedback: null, feedback_note: null, results: {}, approved_at: null, created_at: now(), updated_at: now() };
   demo.ad_plans.push(row); demoSave(); return { ...row };
 }
 
@@ -1040,7 +1062,8 @@ export async function reviseAdPlan(id, note, lang = 'en') {
   if (row.status !== 'draft') fail('not_draft');
   const { business, product, link } = demoAdContext(row.business_id, row.product_id);
   demoAdTry();
-  row.plan = demoAdPlan({ product, business, answers: row.answers, link, lang, note: String(note || '').trim().slice(0, 60) });
+  row.plan = demoAdPlan({ product, business, answers: row.answers, link, lang, note: String(note || '').trim().slice(0, 60), choice: { strategy: row.answers.strategy, touch: row.answers.touch }, memoryUsed: true });
+  row.change_notes = [...(row.change_notes || []), String(note || '').trim().slice(0, 300)].slice(-30);
   row.revisions += 1; row.updated_at = now(); demoSave(); return { ...row };
 }
 
@@ -1070,4 +1093,25 @@ export async function saveAdLesson({ id, category, lesson, evidence, active }) {
   if (live) return id ? db.update('ad_lessons', `id=eq.${id}`, row) : db.insert('ad_lessons', row);
   if (id) { const l = demo.ad_lessons.find((x) => x.id === id); Object.assign(l, row); demoSave(); return { ...l }; }
   const l = { id: uid(), ...row, created_at: now() }; demo.ad_lessons.push(l); demoSave(); return l;
+}
+
+// Brand memory per business: the seller's own notes + what the AI remembers (past plans, changes, feedback, results).
+export async function brandMemory(businessId) {
+  if (live) {
+    const [m, plans] = await Promise.all([
+      db.select('brand_memory', `select=notes,updated_at&business_id=eq.${businessId}`),
+      db.select('ad_plans', `select=id,status,created_at,answers,plan,change_notes,feedback,feedback_note,results&business_id=eq.${businessId}&owner_id=eq.${getSession()?.user?.id}&order=created_at.desc&limit=8`),
+    ]);
+    return { notes: m[0]?.notes || '', plans };
+  }
+  return { notes: demo.brand_memory.find((x) => x.business_id === businessId)?.notes || '',
+    plans: demo.ad_plans.filter((p) => p.business_id === businessId && p.owner_id === meId()).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 8).map((p) => ({ ...p })) };
+}
+export async function saveBrandNotes(businessId, notes) {
+  const clean = String(notes || '').trim().slice(0, 600);
+  if (live) return db.upsert('brand_memory', { business_id: businessId, owner_id: getSession()?.user?.id, notes: clean, updated_at: new Date().toISOString() }, 'business_id');
+  if (!demo.businesses.some((b) => b.id === businessId && b.owner_id === meId())) fail('not_found');
+  const m = demo.brand_memory.find((x) => x.business_id === businessId);
+  if (m) Object.assign(m, { notes: clean, updated_at: now() }); else demo.brand_memory.push({ business_id: businessId, owner_id: meId(), notes: clean, updated_at: now() });
+  demoSave();
 }

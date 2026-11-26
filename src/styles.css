@@ -676,3 +676,10 @@ code.web-link { display: block; max-width: 100%; font-size: 13px; background: va
 .legal-links { text-align: center; color: var(--muted); margin-top: 14px; }
 .legal-links a { color: inherit; }
 .legal section p { margin: 0; line-height: 1.55; }
+
+/* v1.18 strategies + brand memory */
+.strat-card .row-between { width: 100%; gap: 8px; }
+.wiz-sub { font-size: 18px; margin: 14px 0 0; }
+.memory-line { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border-style: dashed; }
+.memory-list { margin: 0; padding-inline-start: 18px; display: grid; gap: 8px; }
+.memory-list li { overflow-wrap: anywhere; }
