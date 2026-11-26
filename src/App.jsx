@@ -11,9 +11,12 @@ import { Admin } from './pages/Admin.jsx';
 import { AdvisorChat } from './pages/Advisor.jsx';
 import { WebsiteBuilder, Storefront } from './pages/Website.jsx';
 import { ConnectGuide } from './pages/Connect.jsx';
+import { AdsPage } from './pages/Ads.jsx';
+import { LegalPage } from './pages/Legal.jsx';
 import * as api from './lib/api.js';
 import { auth } from './lib/supa.js';
 
+const LEGAL = { '/privacy': 'privacy', '/terms': 'terms', '/data-deletion': 'deletion' };
 const PUBLIC = ['/', '/signup', '/login', '/forgot', '/check-email'];
 
 export default function App() {
@@ -94,6 +97,7 @@ export default function App() {
   const storeSlug = route.startsWith('/s/') ? decodeURIComponent(route.split('/')[2] || '') : null;
   if (booting) screen = <Spinner />;
   else if (storeSlug !== null) screen = <Storefront slug={storeSlug} />;
+  else if (LEGAL[route]) screen = <LegalPage kind={LEGAL[route]} />;
   else if (loadError) screen = <div className="screen"><ErrorBox error={loadError} onRetry={boot} /></div>;
   else if (recovery) screen = <ResetPassword onDone={(m) => { setRecovery(false); notify(m); go('/home'); }} />;
   else if (!profile) {
@@ -135,6 +139,7 @@ export default function App() {
       case 'advisor': screen = <AdvisorChat bizId={b} data={data} />; break;
       case 'website': screen = <WebsiteBuilder bizId={b} data={data} notify={notify} />; break;
       case 'connect': screen = <ConnectGuide bizId={b} data={data} notify={notify} />; break;
+      case 'ads': screen = <AdsPage sub={b} data={data} notify={notify} />; break;
       case 'services': screen = <Services notify={notify} data={data} unread={unread} />; break;
       case 'chat': screen = <ChatPage id={b} onRead={loadUnread} />; break;
       case 'admin': screen = profile.role === 'admin' ? <Admin notify={notify} /> : null; break;
@@ -143,9 +148,9 @@ export default function App() {
   }
 
   const [, section] = route.split('/');
-  const showNav = profile && profile.role !== 'agency' && !booting && !recovery && section !== 'admin' && section !== 's';
+  const showNav = profile && profile.role !== 'agency' && !booting && !recovery && section !== 'admin' && section !== 's' && !LEGAL[route];
   const tabs = [['home', 'home', 'home'], ['products', 'grid', 'products'], ['orders', 'box', 'orders'], ['business', 'store', 'bizTab'], ['services', 'megaphone', 'services'], ['ideas', 'bulb', 'ideas']];
-  const active = ['product', 'make'].includes(section) ? 'products' : ['inbox', 'advisor', 'website', 'connect'].includes(section) ? 'business' : section === 'idea' ? 'ideas' : section === 'chat' ? 'services'
+  const active = ['product', 'make'].includes(section) ? 'products' : ['inbox', 'advisor', 'website', 'connect'].includes(section) ? 'business' : section === 'idea' ? 'ideas' : ['chat', 'ads'].includes(section) ? 'services'
     : section === 'analytics' ? 'business' : section === 'earnings' ? 'home' : section || 'home';
 
   return (

@@ -107,6 +107,7 @@ export function More({ onLogout, onProfileSaved, notify }) {
         <button type="submit" className="btn btn-primary block" disabled={busy}>{t('save')}</button>
       </form>
       <Button block variant="ghost" onClick={onLogout}><Icon name="logout" size={18} /> {t('logout')}</Button>
+      <p className="small legal-links"><a href="#/privacy">{t('privacy')}</a> · <a href="#/terms">{t('terms')}</a> · <a href="#/data-deletion">{t('dataDeletion')}</a></p>
     </div>
   );
 }

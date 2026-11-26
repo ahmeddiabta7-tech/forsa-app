@@ -4,7 +4,7 @@ import { Button, Field, Header, Spinner, ErrorBox, useLoad, Sheet, money, date, 
 import { CATEGORIES, GOVERNORATES } from '../lib/i18n.js';
 import * as api from '../lib/api.js';
 
-const TABS = ['Orders', 'Products', 'Shipping', 'Websites', 'Manufacturing', 'Sellers', 'Ideas', 'Services', 'Partners'];
+const TABS = ['Orders', 'Products', 'Shipping', 'Websites', 'Manufacturing', 'Sellers', 'AI ads', 'Ideas', 'Services', 'Partners'];
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'returned', 'cancelled'];
 const PAY_METHODS = { instapay: 'InstaPay', vodafone_cash: 'Vodafone Cash', bank: 'Bank account' };
 
@@ -21,6 +21,7 @@ export function Admin({ notify }) {
       {tab === 'Shipping' && <AdminShipping notify={notify} />}
       {tab === 'Websites' && <><AdminWebsites notify={notify} /><AdminConnections notify={notify} /></>}
       {tab === 'Sellers' && <AdminSellers notify={notify} />}
+      {tab === 'AI ads' && <><AdminAdPlans /><AdminAdLessons notify={notify} /></>}
       {tab === 'Ideas' && <AdminIdeas notify={notify} />}
       {tab === 'Services' && <AdminServices notify={notify} />}
       {tab === 'Partners' && <AdminPartners notify={notify} />}
@@ -796,5 +797,73 @@ function MakerForm({ maker, onClose, onSaved }) {
         <button type="submit" className="btn btn-primary block" disabled={busy}>Save manufacturer</button>
       </form>
     </Sheet>
+  );
+}
+
+// ---------- AI media buyer (pilot follow-up) ----------
+function AdminAdPlans() {
+  const { loading, error, data, reload } = useLoad(() => api.adminAdPlans(), []);
+  if (loading) return <Spinner />;
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
+  const list = data || [];
+  const count = (f) => list.filter(f).length;
+  return (
+    <>
+      <div className="section-head"><h2>AI ad plans ({list.length})</h2></div>
+      <p className="small muted">Approved {count((p) => p.status !== 'draft' && p.status !== 'stopped')} · Helpful 👍 {count((p) => p.feedback === 1)} · Not helpful 👎 {count((p) => p.feedback === -1)}.
+        Read the 👎 notes and turn what you learn into lessons below.</p>
+      {list.length === 0 ? <div className="card empty"><p>No AI ad plans yet.</p></div> : (
+        <div className="list">
+          {list.map((p) => (
+            <button type="button" key={p.id} className="order-row" onClick={() => go(`/ads/${p.id}`)}>
+              {p.plan?.image_url ? <img src={imgSrc(p.plan.image_url)} alt="" /> : null}
+              <span className="or-main"><b>{p.plan?.product_name || 'Ad plan'} · {p.profiles?.full_name || 'Seller'}</b>
+                <span className="small muted">{date(p.created_at, 'en')} · {money(p.plan?.budget?.total || 0, 'en')} · {p.plan?.objective || ''}{p.revisions ? ` · ${p.revisions} changes` : ''}</span>
+                {p.feedback_note && <span className="small">“{p.feedback_note}”</span>}</span>
+              <span className="or-side"><span className="pill pill-pending">{p.status}</span>{p.feedback === 1 ? <span>👍</span> : p.feedback === -1 ? <span>👎</span> : null}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// The AI's memory: short lessons it reads before writing every plan. This is how R&D upgrades the AI without code.
+function AdminAdLessons({ notify }) {
+  const { loading, error, data, reload } = useLoad(() => api.adLessons(), []);
+  const [f, setF] = useState({ category: 'All', lesson: '', evidence: '' });
+  const [busy, setBusy] = useState(false);
+  async function save(e) {
+    e.preventDefault(); setBusy(true);
+    try { await api.saveAdLesson(f); setF({ category: f.category, lesson: '', evidence: '' }); notify('Lesson saved — the AI uses it from the next plan'); reload(); } catch (er) { notify(er.message); } finally { setBusy(false); }
+  }
+  async function toggle(l) { try { await api.saveAdLesson({ ...l, active: !l.active }); reload(); } catch (er) { notify(er.message); } }
+  return (
+    <>
+      <div className="section-head"><h2>AI lessons (R&amp;D)</h2></div>
+      <p className="small muted">Short rules the AI reads before every plan, e.g. what worked for a category. "All" applies to every product. Turn a lesson off when new results disagree.</p>
+      <form className="card stack" onSubmit={save}>
+        <Field id="al-cat" label="Category">
+          <select id="al-cat" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>
+            <option value="All">All products</option>{CATEGORIES.map(([v]) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </Field>
+        <Field id="al-text" label="Lesson"><textarea id="al-text" rows="3" maxLength={600} value={f.lesson} onChange={(e) => setF({ ...f, lesson: e.target.value })} placeholder="e.g. For accessories, the gift angle got orders 40% cheaper than the price angle." /></Field>
+        <Field id="al-ev" label="Based on how many ads (optional)"><input id="al-ev" type="number" inputMode="numeric" min="0" value={f.evidence} onChange={(e) => setF({ ...f, evidence: e.target.value })} /></Field>
+        <Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Add lesson'}</Button>
+      </form>
+      {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : (
+        <div className="list">
+          {(data || []).map((l) => (
+            <div key={l.id} className="card admin-web">
+              <div className="row-between"><b>{l.category}{l.evidence ? ` · ${l.evidence} ads` : ''}</b><span className={`pill ${l.active ? 'pill-delivered' : 'pill-cancelled'}`}>{l.active ? 'On' : 'Off'}</span></div>
+              <p className="small">{l.lesson}</p>
+              <button type="button" className="link-btn" onClick={() => toggle(l)}>{l.active ? 'Turn off' : 'Turn on'}</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

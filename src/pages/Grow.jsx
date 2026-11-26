@@ -313,7 +313,16 @@ export function Services({ notify, data: appData, unread = {} }) {
             <span className="svc-icon"><Icon name={SVC_ICON[k] || 'sparkle'} /></span>
             <div><h3>{t(`svc_${k}`)}</h3><p className="muted small">{t(`svc_${k}_d`)}</p></div>
           </div>
-          <Button block onClick={() => setOpen(k)}>{t('request')}</Button>
+          {k === 'media_buying' ? (
+            <div className="stack ai-mb">
+              <p className="small"><Icon name="sparkle" size={16} /> {t('aiAdsCard')} <span className="pill pill-confirmed">{t('pilot')}</span></p>
+              <Button block onClick={() => go('/ads/new')}>{t('request')}</Button>
+              <div className="row-between">
+                <button type="button" className="link-btn small" onClick={() => go('/ads')}>{t('myAdPlans')}</button>
+                <button type="button" className="link-btn small" onClick={() => setOpen(k)}>{t('preferHuman')}</button>
+              </div>
+            </div>
+          ) : <Button block onClick={() => setOpen(k)}>{t('request')}</Button>}
         </div>
       ))}
       {loading ? <Spinner /> : error ? <ErrorBox error={error} onRetry={reload} /> : (data || []).length > 0 && (

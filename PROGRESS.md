@@ -2,6 +2,24 @@
 
 > Pending change requests from Advisor mode: see `REQUESTS.md`.
 
+## Version 1.17 — Nov 2026 (AI media buyer, pilot step 1)
+- Services → Media buying → "Request" now starts the **AI media buyer** (a "Prefer a human specialist?" link keeps the
+  partner-agency request). 6 quick questions (product + selling price, goal, governorates, age/gender, offer/notes/ad
+  language, budget per day + days) → the `ad-agent` Edge Function (Gemini Flash, falls back to Flash-Lite) looks at the
+  product photo, computes the money math itself (profit per piece after the Forsa fee, break-even cost per order with
+  25% COD refusals, target cost), reads the Forsa team's lessons and the playbook, and writes the strategy, audience,
+  budget advice, tips, an honest warning and **3 ads in Egyptian Arabic** (or English) with a Facebook-style preview.
+  The seller asks for changes or approves; approved plans are locked and show 7 steps to publish in Meta Ads Manager
+  until one-tap publishing (Meta connection) is built. Free during the pilot; the seller pays Meta with his own card.
+- Safety: never free delivery (also rejected in code), no invented offers; 5 AI ad plans a day per seller (new + changes,
+  admin unlimited); plans private to the seller; approved plans can't be changed.
+- Admin → "AI ads": every plan with seller feedback (👍/👎 + note), and **AI lessons** (R&D memory the AI reads before every
+  plan; add/turn off without code). Playbook: `supabase/functions/ad-agent/playbook.md` (run `make.mjs` after editing).
+- Public pages (no login, needed by Meta): `#/privacy`, `#/terms`, `#/data-deletion` (English + Arabic), linked from the
+  welcome and account pages. Contact email: `CONTACT_EMAIL` in `src/config.js` (to be confirmed by Ahmed).
+- Database: `supabase/v1_17.sql` (ad_plans, ad_lessons, ai_usage.ads, ad_try / ad_quota_left).
+- Next (step 2, with Ahmed): Forsa Meta developer app + testers → "Connect Facebook", automatic publishing, daily review.
+
 ## Version 1.16 — Nov 2026 (full audit + one fix)
 - Full audit: build, English/Arabic texts (677 = 677, none missing), no secrets in the code (public anon key only), no
   debug leftovers, user links checked; fresh database install runs twice without errors; every table has row-level

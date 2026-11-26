@@ -3,6 +3,7 @@ import { isConfigured, db, storage, auth, getSession, invokeFunction } from './s
 import { DEMO_PRODUCTS, DEMO_MANUFACTURERS } from './demo.js';
 import { PLAN, SUPABASE_URL } from '../config.js';
 import { GOVERNORATES } from './i18n.js';
+import { demoAdPlan, AD_DAILY_LIMIT, AD_AGES, AD_GOALS } from './ads.js';
 
 const live = isConfigured();
 
@@ -21,7 +22,7 @@ function demoLoad() {
   }
   if (!d.service_requests) d.service_requests = [];
   if (!d.expenses) d.expenses = [];
-  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites', 'store_connections', 'external_orders'].forEach((k) => { if (!d[k]) d[k] = []; });
+  ['businesses', 'business_products', 'messages', 'chat_reads', 'custom_requests', 'custom_request_costs', 'ai_messages', 'ai_usage', 'websites', 'store_connections', 'external_orders', 'ad_plans', 'ad_lessons'].forEach((k) => { if (!d[k]) d[k] = []; });
   d.orders.forEach((o) => { if (o.status === 'on_hold') o.status = 'pending'; }); // old demo data
   if (!d.settings) d.settings = { website_min_orders: 20 };
   if (!d.shipping_rates) d.shipping_rates = GOVERNORATES.map(([g]) => ({ governorate: g, fee: 70, active: true }));
@@ -968,3 +969,105 @@ function demoRelease(seller) {
 }
 function pick(p) { if (!p) return null; const { password, ...r } = p; return r; }
 function byNewest(a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); }
+
+
+// ---------- AI media buyer (pilot) ----------
+// Live: the "ad-agent" Edge Function writes the plan (Gemini); the seller then asks for changes or approves it.
+// Demo: a simple local plan so the screens can be tested. Errors: e.code = 'limit', 'ai_unavailable', 'price_below_min'.
+export async function adQuota() {
+  if (live) return Number(await db.rpc('ad_quota_left'));
+  if (demo.profiles.find((x) => x.id === meId())?.role === 'admin') return AI_UNLIMITED;
+  const u = demo.ai_usage.find((x) => x.user_id === meId() && x.day === aiToday());
+  return Math.max(0, AD_DAILY_LIMIT - (u?.ads || 0));
+}
+
+export async function myAdPlans() {
+  if (live) return db.select('ad_plans', `select=id,business_id,product_id,status,plan,answers,revisions,feedback,created_at,updated_at&owner_id=eq.${getSession()?.user?.id}&order=created_at.desc&limit=100`);
+  return demo.ad_plans.filter((p) => p.owner_id === meId()).sort((a, b) => b.created_at.localeCompare(a.created_at)).map((p) => ({ ...p }));
+}
+
+export async function adPlan(id) {
+  if (live) return (await db.select('ad_plans', `select=*&id=eq.${encodeURIComponent(id)}`))[0] || null;
+  const p = demo.ad_plans.find((x) => x.id === id && (x.owner_id === meId() || demo.profiles.find((u) => u.id === meId())?.role === 'admin'));
+  return p ? { ...p } : null;
+}
+
+function demoAdTry() {
+  const admin = demo.profiles.find((x) => x.id === meId())?.role === 'admin';
+  if (admin) return;
+  let u = demo.ai_usage.find((x) => x.user_id === meId() && x.day === aiToday());
+  if (!u) { u = { user_id: meId(), day: aiToday(), used: 0, ads: 0 }; demo.ai_usage.push(u); }
+  if ((u.ads || 0) >= AD_DAILY_LIMIT) { const e = new Error('limit'); e.code = 'limit'; throw e; }
+  u.ads = (u.ads || 0) + 1;
+}
+
+function demoAnswers(a, hasSite) {
+  const govs = (a.governorates || []).filter((g) => GOVERNORATES.some(([x]) => x === g));
+  let goal = AD_GOALS.includes(a.goal) ? a.goal : 'auto'; if (goal === 'website' && !hasSite) goal = 'auto';
+  const ages = AD_AGES.filter((x) => (a.ages || []).includes(x));
+  return { price: Math.round(Number(a.price)) || 0, goal, all_egypt: govs.length === 0, governorates: govs, ages: ages.length ? ages : ['18-24', '25-34'],
+    gender: ['all', 'men', 'women'].includes(a.gender) ? a.gender : 'all', offer: String(a.offer || '').trim().slice(0, 200), notes: String(a.notes || '').trim().slice(0, 300),
+    ad_lang: a.ad_lang === 'en' ? 'en' : 'ar', daily: Math.min(100000, Math.max(50, Math.round(Number(a.daily)) || 150)), days: Math.min(60, Math.max(1, Math.round(Number(a.days)) || 5)) };
+}
+
+function demoAdContext(businessId, productId) {
+  const business = demo.businesses.find((b) => b.id === businessId && b.owner_id === meId());
+  if (!business) fail('not_found');
+  if (!demo.business_products.some((x) => x.business_id === businessId && x.product_id === productId)) fail('product_not_in_business');
+  const product = demo.products.find((p) => p.id === productId);
+  const site = demo.websites.find((w) => w.business_id === businessId && w.status === 'approved' && w.published && w.slug);
+  return { business, product, link: site ? storeLink(site.slug) : '' };
+}
+
+export async function createAdPlan({ businessId, productId, answers, lang = 'en' }) {
+  if (live) return (await invokeFunction('ad-agent', { action: 'create', business_id: businessId, product_id: productId, answers, lang }, 60000)).plan;
+  await new Promise((r) => setTimeout(r, 400));
+  const { business, product, link } = demoAdContext(businessId, productId);
+  const a = demoAnswers(answers, !!link);
+  if (!a.price) a.price = Number(product.suggested_price) || 0;
+  if (a.price < (Number(product.min_price) || 0)) { const e = new Error('price_below_min'); e.code = 'price_below_min'; e.min = Number(product.min_price); throw e; }
+  demoAdTry();
+  const row = { id: uid(), owner_id: meId(), business_id: businessId, product_id: productId, status: 'draft', answers: a, plan: demoAdPlan({ product, business, answers: a, link, lang }),
+    revisions: 0, feedback: null, feedback_note: null, results: {}, approved_at: null, created_at: now(), updated_at: now() };
+  demo.ad_plans.push(row); demoSave(); return { ...row };
+}
+
+export async function reviseAdPlan(id, note, lang = 'en') {
+  if (live) return (await invokeFunction('ad-agent', { action: 'revise', plan_id: id, note: String(note || '').trim().slice(0, 300), lang }, 60000)).plan;
+  await new Promise((r) => setTimeout(r, 400));
+  const row = demo.ad_plans.find((x) => x.id === id && x.owner_id === meId());
+  if (!row) fail('not_found');
+  if (row.status !== 'draft') fail('not_draft');
+  const { business, product, link } = demoAdContext(row.business_id, row.product_id);
+  demoAdTry();
+  row.plan = demoAdPlan({ product, business, answers: row.answers, link, lang, note: String(note || '').trim().slice(0, 60) });
+  row.revisions += 1; row.updated_at = now(); demoSave(); return { ...row };
+}
+
+async function updateAdPlan(id, patch) {
+  if (live) return db.update('ad_plans', `id=eq.${encodeURIComponent(id)}`, patch);
+  const row = demo.ad_plans.find((x) => x.id === id && x.owner_id === meId());
+  if (!row) fail('not_found');
+  if (patch.status === 'approved') { if (row.status !== 'draft') fail('not_draft'); row.approved_at = now(); }
+  Object.assign(row, patch, { updated_at: now() }); demoSave(); return { ...row };
+}
+export const approveAdPlan = (id) => updateAdPlan(id, { status: 'approved' });
+export const stopAdPlan = (id) => updateAdPlan(id, { status: 'stopped' });
+export const adFeedback = (id, score, note) => updateAdPlan(id, { feedback: score === -1 ? -1 : 1, feedback_note: String(note || '').trim().slice(0, 500) || null });
+
+// Admin (pilot follow-up): every plan with its seller, and the AI's lessons.
+export async function adminAdPlans() {
+  if (live) return db.select('ad_plans', 'select=id,status,plan,answers,revisions,feedback,feedback_note,created_at,owner_id,profiles(full_name)&order=created_at.desc&limit=300');
+  return demo.ad_plans.map((p) => ({ ...p, profiles: { full_name: demo.profiles.find((u) => u.id === p.owner_id)?.full_name || '' } })).sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+export async function adLessons() {
+  if (live) return db.select('ad_lessons', 'select=*&order=created_at.desc');
+  return [...demo.ad_lessons].sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+export async function saveAdLesson({ id, category, lesson, evidence, active }) {
+  const row = { category: String(category || 'All').trim().slice(0, 40) || 'All', lesson: String(lesson || '').trim().slice(0, 600), evidence: Math.max(0, Math.round(Number(evidence) || 0)), active: active !== false };
+  if (row.lesson.length < 5) fail('Write the lesson (at least 5 letters)');
+  if (live) return id ? db.update('ad_lessons', `id=eq.${id}`, row) : db.insert('ad_lessons', row);
+  if (id) { const l = demo.ad_lessons.find((x) => x.id === id); Object.assign(l, row); demoSave(); return { ...l }; }
+  const l = { id: uid(), ...row, created_at: now() }; demo.ad_lessons.push(l); demoSave(); return l;
+}

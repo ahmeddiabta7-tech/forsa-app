@@ -1,0 +1,372 @@
+// AI media buyer (pilot): Services → "Make my ad with AI".
+// #/ads (my ad plans) · #/ads/new (step-by-step questions) · #/ads/<id> (the plan: strategy, 3 ads, approve).
+// The AI only writes the plan; the seller approves. Auto-publishing to Facebook/Instagram comes with the Meta connection.
+import React, { useMemo, useState } from 'react';
+import { useApp, go, Header, Button, Field, Spinner, ErrorBox, Icon, money, num, date, pname, imgSrc, latinDigits, useLoad } from '../core.jsx';
+import { GOVERNORATES } from '../lib/i18n.js';
+import { AD_AGES, AD_DAILY, AD_DAYS, AD_MIN_DAILY, adMath } from '../lib/ads.js';
+import * as api from '../lib/api.js';
+
+const STATUS_PILL = { draft: 'pill-pending', approved: 'pill-delivered', running: 'pill-confirmed', done: 'pill-delivered', stopped: 'pill-cancelled' };
+const errText = (t, e) => (e?.code === 'limit' ? t('adLimit') : e?.code === 'ai_unavailable' ? t('adUnavailable')
+  : e?.code === 'price_below_min' || e?.message === 'price_below_min' ? t('adPriceLow') : e?.message || t('adUnavailable'));
+
+export function AdsPage({ sub, data, notify }) {
+  if (sub === 'new') return <AdWizard data={data} notify={notify} />;
+  if (sub) return <AdPlanView id={sub} data={data} notify={notify} />;
+  return <AdsHome data={data} />;
+}
+
+function AdsHome({ data }) {
+  const { t, lang } = useApp();
+  const plans = useLoad(() => api.myAdPlans(), []);
+  const quota = useLoad(() => api.adQuota(), []);
+  const biz = (id) => (data.businesses || []).find((b) => b.id === id)?.name || '';
+  return (
+    <div className="screen">
+      <Header title="" back="/services" />
+      <div className="row-between"><h1 className="page-title">{t('aiAds')}</h1><span className="pill pill-confirmed">{t('pilot')}</span></div>
+      <p className="lead">{t('aiAdsLead')}</p>
+      <div className="card ai-ads-how stack">
+        <ol className="small own-steps"><li>{t('aiAdsStep1')}</li><li>{t('aiAdsStep2')}</li><li>{t('aiAdsStep3')}</li></ol>
+        <Button block onClick={() => go('/ads/new')}><Icon name="sparkle" size={18} /> {t('aiAdsNew')}</Button>
+        {quota.data != null && quota.data < 9999 && <p className="small muted">{t('adLeftToday', { n: num(quota.data, lang) })}</p>}
+      </div>
+      {plans.loading ? <Spinner /> : plans.error ? <ErrorBox error={plans.error} onRetry={plans.reload} /> : (plans.data || []).length > 0 && (
+        <>
+          <div className="section-head"><h2>{t('myAdPlans')}</h2></div>
+          <div className="list">
+            {plans.data.map((p) => (
+              <button type="button" key={p.id} className="order-row" onClick={() => go(`/ads/${p.id}`)}>
+                {p.plan?.image_url ? <img src={imgSrc(p.plan.image_url)} alt="" /> : <Icon name="megaphone" />}
+                <span className="or-main"><b>{p.plan?.product_name || t('aiAds')}</b>
+                  <span className="small muted">{biz(p.business_id)} · {date(p.created_at, lang)} · {money(p.plan?.budget?.total || 0, lang)}</span></span>
+                <span className={`pill ${STATUS_PILL[p.status] || 'pill-pending'}`}>{t(`adSt_${p.status}`)}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const STEPS = ['adStepProduct', 'adStepGoal', 'adStepWhere', 'adStepWho', 'adStepOffer', 'adStepBudget'];
+
+function AdWizard({ data }) {
+  const { t, lang } = useApp();
+  const businesses = data.businesses || [];
+  const prods = useLoad(() => api.listProducts(), []);
+  const sites = useLoad(() => api.myWebsites(), []);
+  const quota = useLoad(() => api.adQuota(), []);
+  const [step, setStep] = useState(0);
+  const [f, setF] = useState({ bizId: businesses[0]?.id || '', productId: '', price: '', goal: 'auto', governorates: [], ages: ['18-24', '25-34'], gender: 'all',
+    offer: '', notes: '', ad_lang: 'ar', daily: 150, days: 5 });
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const biz = businesses.find((b) => b.id === f.bizId);
+  const mine = useMemo(() => (prods.data || []).filter((p) => biz?.product_ids.includes(p.id)), [prods.data, biz]);
+  const product = mine.find((p) => p.id === f.productId);
+  const hasSite = (sites.data || []).some((w) => w.business_id === f.bizId && w.status === 'approved' && w.published && w.slug);
+  const price = Number(f.price) || 0;
+  const math = product && price ? adMath(product, price) : null;
+  const set = (patch) => { setF({ ...f, ...patch }); setErr(''); };
+  const toggle = (k, v) => set({ [k]: f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v] });
+
+  if (businesses.length === 0) {
+    return <div className="screen"><Header title={t('aiAds')} back="/ads" /><div className="card empty"><p>{t('needBusinessFirst')}</p><Button onClick={() => go('/business')}>{t('createBusiness')}</Button></div></div>;
+  }
+  if (prods.loading || sites.loading) return <div className="screen"><Header title={t('aiAds')} back="/ads" /><Spinner /></div>;
+  if (busy) {
+    return (
+      <div className="screen"><Header title={t('aiAds')} />
+        <div className="card ai-building stack" role="status" aria-live="polite">
+          <Spinner />
+          <b>{t('adBuilding')}</b>
+          <ul className="small muted own-steps"><li>{t('adBuilding1')}</li><li>{t('adBuilding2')}</li><li>{t('adBuilding3')}</li></ul>
+        </div>
+      </div>
+    );
+  }
+
+  function check() {
+    if (step === 0) {
+      if (!product) return t('adPickProduct');
+      if (!price) return t('adPriceNeeded');
+      if (price < (Number(product.min_price) || 0)) return t('adPriceLow') + ` (${money(product.min_price, lang)})`;
+    }
+    if (step === 3 && f.ages.length === 0) return t('adPickAge');
+    if (step === 5 && (Number(f.daily) || 0) < AD_MIN_DAILY) return t('adDailyMin', { n: num(AD_MIN_DAILY, lang) });
+    return '';
+  }
+  async function next() {
+    const e = check(); if (e) { setErr(e); return; }
+    if (step < STEPS.length - 1) { setStep(step + 1); window.scrollTo(0, 0); return; }
+    setBusy(true);
+    try {
+      const plan = await api.createAdPlan({ businessId: f.bizId, productId: f.productId, lang,
+        answers: { price, goal: f.goal, governorates: f.governorates, ages: f.ages, gender: f.gender, offer: f.offer, notes: f.notes, ad_lang: f.ad_lang, daily: Number(f.daily), days: Number(f.days) } });
+      go(`/ads/${plan.id}`);
+    } catch (er) { setBusy(false); setErr(errText(t, er)); }
+  }
+  const chip = (on, label, onClick, key) => <button type="button" key={key || label} role="checkbox" aria-checked={on} className="chip" onClick={onClick}>{label}</button>;
+  const radio = (on, label, onClick, key) => <button type="button" key={key || label} role="radio" aria-checked={on} className="chip" onClick={onClick}>{label}</button>;
+
+  return (
+    <div className="screen">
+      <Header title={t('aiAds')} back={step === 0 ? '/ads' : undefined} />
+      <div className="wiz-progress" aria-label={t('adStepOf', { a: num(step + 1, lang), b: num(STEPS.length, lang) })}>
+        {STEPS.map((s, i) => <span key={s} className={i <= step ? 'on' : ''} />)}
+      </div>
+      <p className="small muted">{t('adStepOf', { a: num(step + 1, lang), b: num(STEPS.length, lang) })}</p>
+      <h2 className="wiz-title">{t(STEPS[step])}</h2>
+
+      {step === 0 && (
+        <div className="stack">
+          {businesses.length > 1 && (
+            <Field id="ad-biz" label={t('business')}>
+              <select id="ad-biz" value={f.bizId} onChange={(e) => set({ bizId: e.target.value, productId: '', price: '' })}>{businesses.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+            </Field>
+          )}
+          {mine.length === 0 ? <div className="card empty"><p>{t('addProductFirst')}</p><Button onClick={() => go('/products')}>{t('addProducts')}</Button></div> : (
+            <div className="list" role="radiogroup" aria-label={t('adStepProduct')}>
+              {mine.map((p) => (
+                <button type="button" key={p.id} role="radio" aria-checked={f.productId === p.id} className="order-row pick-ad" onClick={() => set({ productId: p.id, price: f.productId === p.id ? f.price : String(p.suggested_price || p.min_price || '') })}>
+                  <img src={imgSrc(p.image_url)} alt="" />
+                  <span className="or-main"><b>{pname(p, lang)}</b><span className="small muted">{t('minPrice')}: {money(p.min_price, lang)}</span></span>
+                  {f.productId === p.id && <Icon name="check" />}
+                </button>
+              ))}
+            </div>
+          )}
+          {product && (
+            <>
+              <Field id="ad-price" label={t('adSellPrice')} hint={t('adSellPriceHint')}>
+                <input id="ad-price" type="number" inputMode="numeric" min={product.min_price} value={f.price} onChange={(e) => set({ price: latinDigits(e.target.value) })} />
+              </Field>
+              {math && (
+                <div className="ink-card">
+                  <span className="eyebrow">{t('adYouGetPiece')}</span>
+                  <span className="big">{money(math.profit_per_piece, lang)}</span>
+                  <small>{t('adBreakEven', { n: money(math.break_even_cpa, lang) })}</small>
+                </div>
+              )}
+              {math?.weak && <p className="form-error small" role="note">{t('adWeak')}</p>}
+            </>
+          )}
+        </div>
+      )}
+
+      {step === 1 && (
+        <div className="list" role="radiogroup" aria-label={t('adStepGoal')}>
+          {['auto', 'website', 'messages'].map((g) => {
+            const off = g === 'website' && !hasSite;
+            return (
+              <button type="button" key={g} role="radio" aria-checked={f.goal === g} disabled={off} className="card opt-card" onClick={() => set({ goal: g })}>
+                <b>{t(`adGoal_${g}`)}{g === 'auto' ? ` · ${t('recommended')}` : ''}</b>
+                <span className="small muted">{off ? t('adGoalNoSite') : t(`adGoal_${g}_d`)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="stack">
+          <div className="chips">{radio(f.governorates.length === 0, t('allEgypt'), () => set({ governorates: [] }), 'all')}</div>
+          <p className="small muted">{t('adWhereHint')}</p>
+          <div className="chips wrap opt-chips" role="group" aria-label={t('adStepWhere')}>
+            {GOVERNORATES.map(([g, ar]) => chip(f.governorates.includes(g), lang === 'ar' ? ar : g, () => toggle('governorates', g), g))}
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+        <div className="stack">
+          <h3 className="small">{t('adAge')}</h3>
+          <div className="chips opt-chips" role="group" aria-label={t('adAge')}>{AD_AGES.map((a) => chip(f.ages.includes(a), num(a.split('-')[0], lang) + (a.includes('+') ? '+' : `–${num(a.split('-')[1], lang)}`), () => toggle('ages', a), a))}</div>
+          <h3 className="small">{t('adGender')}</h3>
+          <div className="chips opt-chips" role="radiogroup" aria-label={t('adGender')}>{['all', 'men', 'women'].map((g) => radio(f.gender === g, t(`adGender_${g}`), () => set({ gender: g }), g))}</div>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div className="stack">
+          <Field id="ad-offer" label={t('adOffer')} hint={t('adOfferHint')}><input id="ad-offer" maxLength={200} value={f.offer} onChange={(e) => set({ offer: e.target.value })} /></Field>
+          <Field id="ad-notes" label={t('adNotes')} hint={t('adNotesHint')}><textarea id="ad-notes" rows="3" maxLength={300} value={f.notes} onChange={(e) => set({ notes: e.target.value })} /></Field>
+          <h3 className="small">{t('adLang')}</h3>
+          <div className="chips opt-chips" role="radiogroup" aria-label={t('adLang')}>{['ar', 'en'].map((l) => radio(f.ad_lang === l, t(`adLang_${l}`), () => set({ ad_lang: l }), l))}</div>
+        </div>
+      )}
+
+      {step === 5 && (
+        <div className="stack">
+          <h3 className="small">{t('adDaily')}</h3>
+          <div className="chips opt-chips" role="radiogroup" aria-label={t('adDaily')}>{AD_DAILY.map((d) => radio(Number(f.daily) === d, money(d, lang), () => set({ daily: d }), String(d)))}</div>
+          <Field id="ad-daily" label={t('adDailyOther')}><input id="ad-daily" type="number" inputMode="numeric" min={AD_MIN_DAILY} value={f.daily} onChange={(e) => set({ daily: latinDigits(e.target.value) })} /></Field>
+          <h3 className="small">{t('adDays')}</h3>
+          <div className="chips opt-chips" role="radiogroup" aria-label={t('adDays')}>{AD_DAYS.map((d) => radio(Number(f.days) === d, t('nDays', { n: num(d, lang) }), () => set({ days: d }), String(d)))}</div>
+          <div className="ink-card">
+            <span className="eyebrow">{t('adTotal')}</span>
+            <span className="big">{money((Number(f.daily) || 0) * (Number(f.days) || 0), lang)}</span>
+            <small>{t('adPaidByYou')}</small>
+          </div>
+          {quota.data != null && quota.data < 9999 && <p className="small muted">{t('adLeftToday', { n: num(quota.data, lang) })}</p>}
+        </div>
+      )}
+
+      {err && <p className="form-error" role="alert">{err}</p>}
+      <div className="wiz-nav">
+        {step > 0 && <Button variant="ghost" onClick={() => { setStep(step - 1); setErr(''); }}>{t('back')}</Button>}
+        <Button onClick={next} disabled={step === 0 && mine.length === 0}>{step === STEPS.length - 1 ? <><Icon name="sparkle" size={18} /> {t('adMake')}</> : t('next')}</Button>
+      </div>
+    </div>
+  );
+}
+
+function AdPreview({ ad, plan }) {
+  const { t } = useApp();
+  const [more, setMore] = useState(false);
+  const long = ad.primary_text.length > 160;
+  return (
+    <div className="fb-ad" dir="auto">
+      <div className="fb-head"><span className="fb-avatar" aria-hidden="true">{(plan.business_name || 'F').slice(0, 1)}</span>
+        <span><b>{plan.business_name}</b><span className="small muted">{t('sponsored')}</span></span></div>
+      <p className="fb-text">{long && !more ? `${ad.primary_text.slice(0, 160)}… ` : ad.primary_text}
+        {long && <button type="button" className="link-btn" onClick={() => setMore(!more)}>{more ? t('seeLess') : t('seeMore')}</button>}</p>
+      {plan.image_url && <img className="fb-img" src={imgSrc(plan.image_url)} alt={plan.product_name} />}
+      <div className="fb-foot"><b>{ad.headline}</b><span className="fb-cta">{t(`cta_${ad.cta}`)}</span></div>
+    </div>
+  );
+}
+
+function copy(text, notify, t) {
+  try { navigator.clipboard.writeText(text).then(() => notify(t('copied')), () => notify(t('copyFailed'))); } catch { notify(t('copyFailed')); }
+}
+
+function AdPlanView({ id, notify }) {
+  const { t, lang, profile } = useApp();
+  const row = useLoad(() => api.adPlan(id), [id]);
+  const [tab, setTab] = useState(0);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState('');
+  const [err, setErr] = useState('');
+  const [fb, setFb] = useState({ score: null, note: '', sent: false });
+  if (row.loading) return <div className="screen"><Header title={t('aiAds')} back="/ads" /><Spinner /></div>;
+  if (row.error) return <div className="screen"><Header title={t('aiAds')} back="/ads" /><ErrorBox error={row.error} onRetry={row.reload} /></div>;
+  const r = row.data;
+  if (!r) return <div className="screen"><Header title={t('aiAds')} back="/ads" /><div className="card empty"><p>{t('notFound')}</p></div></div>;
+  const p = r.plan || {}; const m = p.math || {}; const a = p.audience || {}; const ads = p.ads || []; const ad = ads[Math.min(tab, ads.length - 1)];
+  const mine = r.owner_id === profile?.id;
+  const where = a.all_egypt || !(a.governorates || []).length ? t('allEgypt') : a.governorates.map((g) => (lang === 'ar' ? GOVERNORATES.find(([x]) => x === g)?.[1] || g : g)).join('، ');
+
+  async function revise() {
+    if (!note.trim()) { setErr(t('adChangeWhat')); return; }
+    setBusy('revise'); setErr('');
+    try { await api.reviseAdPlan(r.id, note, lang); setNote(''); setTab(0); notify(t('adUpdated')); row.reload(); } catch (e) { setErr(errText(t, e)); } finally { setBusy(''); }
+  }
+  async function approve() {
+    setBusy('approve'); setErr('');
+    try { await api.approveAdPlan(r.id); notify(t('adApproved')); row.reload(); window.scrollTo(0, 0); } catch (e) { setErr(e.message); } finally { setBusy(''); }
+  }
+  async function sendFeedback(score) {
+    const s = score ?? fb.score; if (!s) return;
+    try { await api.adFeedback(r.id, s, fb.note); setFb({ ...fb, score: s, sent: true }); notify(t('thanksFeedback')); } catch (e) { notify(e.message); }
+  }
+
+  return (
+    <div className="screen ad-plan">
+      <Header title="" back="/ads" />
+      <div className="row-between"><h1 className="page-title">{p.product_name}</h1><span className={`pill ${STATUS_PILL[r.status]}`}>{t(`adSt_${r.status}`)}</span></div>
+      <p className="small muted">{p.business_name} · {date(r.created_at, lang)}{r.revisions ? ` · ${t('adRevisions', { n: num(r.revisions, lang) })}` : ''}</p>
+
+      {r.status === 'approved' && mine && <PublishSteps plan={p} notify={notify} />}
+
+      <div className="ink-card">
+        <span className="eyebrow">{t('adYouGetPiece')}</span>
+        <span className="big">{money(m.profit_per_piece || 0, lang)}</span>
+        <small>{t('adBreakEven', { n: money(m.break_even_cpa || 0, lang) })} · {t('adTarget', { n: money(m.target_cpa || 0, lang) })}</small>
+      </div>
+      {p.warning && <div className="card warn-card"><Icon name="alert" /> <span>{p.warning}</span></div>}
+
+      <div className="card stack">
+        <h3>{t('adStrategy')}: {t(`adObj_${p.objective}`)}</h3>
+        <p>{p.why}</p>
+        {p.product_insight && <p className="small muted">{p.product_insight}</p>}
+        <dl className="kv">
+          <dt>{t('adWhere')}</dt><dd>{where}</dd>
+          <dt>{t('adAge')}</dt><dd>{num(a.age_min || 18, lang)}–{num(a.age_max || 65, lang)}</dd>
+          <dt>{t('adGender')}</dt><dd>{t(`adGender_${a.gender || 'all'}`)}</dd>
+          {(a.interests || []).length > 0 && <><dt>{t('adInterests')}</dt><dd>{a.interests.join(', ')}</dd></>}
+          <dt>{t('adBudget')}</dt><dd>{money(p.budget?.daily || 0, lang)} × {t('nDays', { n: num(p.budget?.days || 0, lang) })} = <b>{money(p.budget?.total || 0, lang)}</b></dd>
+          {p.link && <><dt>{t('adLink')}</dt><dd><code className="web-link">{p.link}</code></dd></>}
+        </dl>
+        {p.budget_advice && <p className="small">{p.budget_advice}</p>}
+      </div>
+
+      <div className="section-head"><h2>{t('adYourAds')}</h2></div>
+      <div className="chips scroll" role="tablist">
+        {ads.map((x, i) => <button type="button" key={i} role="tab" aria-selected={tab === i} aria-pressed={tab === i} className="chip" onClick={() => setTab(i)}>{num(i + 1, lang)}. {x.angle}</button>)}
+      </div>
+      {ad && <AdPreview ad={ad} plan={p} />}
+      {ad && <Button variant="ghost" small onClick={() => copy(`${ad.primary_text}\n\n${ad.headline}`, notify, t)}><Icon name="copy" size={16} /> {t('adCopyText')}</Button>}
+
+      {(p.tips || []).length > 0 && (
+        <div className="card stack"><h3>{t('adTips')}</h3><ul className="ticks">{p.tips.map((x, i) => <li key={i}><Icon name="check" size={16} />{x}</li>)}</ul></div>
+      )}
+
+      {r.status === 'draft' && mine && (
+        <div className="card stack">
+          <Field id="ad-change" label={t('adChange')} hint={t('adChangeHint')}><textarea id="ad-change" rows="2" maxLength={300} value={note} onChange={(e) => { setNote(e.target.value); setErr(''); }} /></Field>
+          <Button variant="ghost" block disabled={!!busy} onClick={revise}>{busy === 'revise' ? t('adBuilding') : t('adChangeBtn')}</Button>
+          {err && <p className="form-error" role="alert">{err}</p>}
+          <Button block disabled={!!busy} onClick={approve}>{busy === 'approve' ? t('loading') : t('adApprove')}</Button>
+          <p className="small muted">{t('adApproveNote')}</p>
+        </div>
+      )}
+
+      {mine && (
+        <div className="card stack ad-feedback">
+          <h3>{t('adHelpful')}</h3>
+          {fb.sent || r.feedback ? <p className="small">{t('thanksFeedback')}</p> : (
+            <>
+              <div className="chips">
+                <button type="button" className="chip" aria-pressed={fb.score === 1} onClick={() => setFb({ ...fb, score: 1 })}>👍 {t('yes')}</button>
+                <button type="button" className="chip" aria-pressed={fb.score === -1} onClick={() => setFb({ ...fb, score: -1 })}>👎 {t('no')}</button>
+              </div>
+              {fb.score && <>
+                <Field id="ad-fb" label={t('adFeedbackNote')}><textarea id="ad-fb" rows="2" maxLength={500} value={fb.note} onChange={(e) => setFb({ ...fb, note: e.target.value })} /></Field>
+                <Button small onClick={() => sendFeedback()}>{t('send')}</Button>
+              </>}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Until Facebook is connected: clear steps to publish the approved plan in Meta Ads Manager by hand.
+function PublishSteps({ plan, notify }) {
+  const { t, lang } = useApp();
+  const a = plan.audience || {};
+  const where = a.all_egypt || !(a.governorates || []).length ? t('allEgypt') : a.governorates.map((g) => (lang === 'ar' ? GOVERNORATES.find(([x]) => x === g)?.[1] || g : g)).join(lang === 'ar' ? '، ' : ', ');
+  const steps = [
+    t('pub1'),
+    t('pub2', { g: t(`pubObj_${plan.objective}`) }),
+    t('pub3', { d: money(plan.budget?.daily || 0, lang), n: num(plan.budget?.days || 0, lang) }),
+    t('pub4', { w: where, a: `${a.age_min}–${a.age_max}`, g: t(`adGender_${a.gender || 'all'}`) }),
+    t('pub5', { n: num((plan.ads || []).length, lang) }),
+    plan.link ? t('pub6link') : t('pub6msg'),
+    t('pub7'),
+  ];
+  return (
+    <div className="card stack publish-card">
+      <h3><Icon name="check" /> {t('adApprovedTitle')}</h3>
+      <p className="small">{t('adAutoSoon')}</p>
+      <ol className="small own-steps">{steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+      {plan.link && <Button variant="ghost" small onClick={() => copy(plan.link, notify, t)}><Icon name="link" size={16} /> {t('adCopyLink')}</Button>}
+      {plan.image_url && <a className="btn btn-ghost small" href={imgSrc(plan.image_url)} target="_blank" rel="noopener noreferrer"><Icon name="image" size={16} /> {t('adOpenPhoto')}</a>}
+    </div>
+  );
+}

@@ -96,6 +96,7 @@ export function Welcome() {
         <Button block onClick={() => go('/signup')}>{t('getStarted')}</Button>
         <Button block variant="ghost" onClick={() => go('/login')}>{t('haveAccount')}</Button>
       </div>
+      <p className="small legal-links"><a href="#/privacy">{t('privacy')}</a> · <a href="#/terms">{t('terms')}</a> · <a href="#/data-deletion">{t('dataDeletion')}</a></p>
     </div>
   );
 }
