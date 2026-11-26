@@ -280,7 +280,7 @@ function AdPlanView({ id, notify }) {
       <div className="row-between"><h1 className="page-title">{p.product_name}</h1><span className={`pill ${STATUS_PILL[r.status]}`}>{t(`adSt_${r.status}`)}</span></div>
       <p className="small muted">{p.business_name} · {date(r.created_at, lang)}{r.revisions ? ` · ${t('adRevisions', { n: num(r.revisions, lang) })}` : ''}</p>
 
-      {r.status === 'approved' && mine && <PublishSteps plan={p} notify={notify} />}
+      {r.status === 'approved' && mine && <PublishSteps />}
 
       <div className="ink-card">
         <span className="eyebrow">{t('adYouGetPiece')}</span>
@@ -346,27 +346,15 @@ function AdPlanView({ id, notify }) {
   );
 }
 
-// Until Facebook is connected: clear steps to publish the approved plan in Meta Ads Manager by hand.
-function PublishSteps({ plan, notify }) {
-  const { t, lang } = useApp();
-  const a = plan.audience || {};
-  const where = a.all_egypt || !(a.governorates || []).length ? t('allEgypt') : a.governorates.map((g) => (lang === 'ar' ? GOVERNORATES.find(([x]) => x === g)?.[1] || g : g)).join(lang === 'ar' ? '، ' : ', ');
-  const steps = [
-    t('pub1'),
-    t('pub2', { g: t(`pubObj_${plan.objective}`) }),
-    t('pub3', { d: money(plan.budget?.daily || 0, lang), n: num(plan.budget?.days || 0, lang) }),
-    t('pub4', { w: where, a: `${a.age_min}–${a.age_max}`, g: t(`adGender_${a.gender || 'all'}`) }),
-    t('pub5', { n: num((plan.ads || []).length, lang) }),
-    plan.link ? t('pub6link') : t('pub6msg'),
-    t('pub7'),
-  ];
+// After approval Forsa publishes the ad for the seller. One-tap Facebook connection + automatic publishing come with
+// Forsa's Meta app (pilot step 2); until then the approved plan waits here, ready.
+function PublishSteps() {
+  const { t } = useApp();
   return (
     <div className="card stack publish-card">
       <h3><Icon name="check" /> {t('adApprovedTitle')}</h3>
       <p className="small">{t('adAutoSoon')}</p>
-      <ol className="small own-steps">{steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
-      {plan.link && <Button variant="ghost" small onClick={() => copy(plan.link, notify, t)}><Icon name="link" size={16} /> {t('adCopyLink')}</Button>}
-      {plan.image_url && <a className="btn btn-ghost small" href={imgSrc(plan.image_url)} target="_blank" rel="noopener noreferrer"><Icon name="image" size={16} /> {t('adOpenPhoto')}</a>}
+      <ol className="small own-steps"><li>{t('adNext1')}</li><li>{t('adNext2')}</li><li>{t('adNext3')}</li></ol>
     </div>
   );
 }
