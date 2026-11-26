@@ -226,7 +226,7 @@ export function buildPrompt({ product, business, answers, math, link, lessons, l
     '- budget_advice: one or two sentences: is this budget/days enough to judge (compare total budget with 3x break-even cost per order)? What to do if not.',
     '- tips: 2 to 4 short practical tips for this seller (reply speed for messages, confirming orders, etc.).',
     '- warning: an honest warning if the price/profit is weak for ads (break-even cost per order under 40 EGP) or the budget is too small, else an empty string.',
-    `- Write why, product_insight, budget_advice, tips and warning in ${lang === 'ar' ? 'simple Egyptian Arabic' : 'simple English'}.`,
+    `- Write why, product_insight, budget_advice, tips and warning in ${lang === 'ar' ? 'simple Egyptian Arabic' : 'simple English'}, speaking directly to the seller as "you" (never "the seller"), like a friendly expert media buyer.`,
   ].join('\n');
 }
 

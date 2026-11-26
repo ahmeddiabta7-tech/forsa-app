@@ -70,8 +70,8 @@ function AdWizard({ data }) {
   const hasSite = (sites.data || []).some((w) => w.business_id === f.bizId && w.status === 'approved' && w.published && w.slug);
   const price = Number(f.price) || 0;
   const math = product && price ? adMath(product, price) : null;
-  const set = (patch) => { setF({ ...f, ...patch }); setErr(''); };
-  const toggle = (k, v) => set({ [k]: f[k].includes(v) ? f[k].filter((x) => x !== v) : [...f[k], v] });
+  const set = (patch) => { setF((x) => ({ ...x, ...patch })); setErr(''); };
+  const toggle = (k, v) => { setF((x) => ({ ...x, [k]: x[k].includes(v) ? x[k].filter((y) => y !== v) : [...x[k], v] })); setErr(''); };
 
   if (businesses.length === 0) {
     return <div className="screen"><Header title={t('aiAds')} back="/ads" /><div className="card empty"><p>{t('needBusinessFirst')}</p><Button onClick={() => go('/business')}>{t('createBusiness')}</Button></div></div>;
